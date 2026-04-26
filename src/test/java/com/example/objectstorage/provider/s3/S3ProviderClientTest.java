@@ -16,11 +16,12 @@ import com.example.objectstorage.api.request.UploadFileRequest;
 import com.example.objectstorage.api.response.RetrievedObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
+import java.io.ByteArrayInputStream;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
@@ -54,8 +55,10 @@ class S3ProviderClientTest {
                 .contentType("text/plain")
                 .metadata(Map.of("owner", "team"))
                 .build();
-        when(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
-                .thenReturn(ResponseBytes.fromByteArray(response, new byte[]{1, 2, 3, 4}));
+        @SuppressWarnings("unchecked")
+        ResponseInputStream<GetObjectResponse> stream = mock(ResponseInputStream.class);
+        when(stream.response()).thenReturn(response);
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(stream);
 
         S3ProviderClient client = new S3ProviderClient(s3Client);
         RetrievedObject result = client.getFile("docs", new GetFileRequest("customer/a.txt"));
@@ -142,7 +145,8 @@ class S3ProviderClientTest {
     private static UploadFileRequest uploadRequest() {
         return new UploadFileRequest(
                 "customer/a.txt",
-                new byte[]{1, 2, 3},
+                new ByteArrayInputStream(new byte[]{1, 2, 3}),
+                3L,
                 "text/plain",
                 Map.of("owner", "team")
         );

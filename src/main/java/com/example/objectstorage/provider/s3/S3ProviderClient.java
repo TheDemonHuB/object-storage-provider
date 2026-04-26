@@ -8,9 +8,11 @@ import com.example.objectstorage.api.request.UploadFileRequest;
 import com.example.objectstorage.api.response.RetrievedObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
+import com.example.objectstorage.core.ObjectStorageException;
 import com.example.objectstorage.config.S3StorageConfig;
 import com.example.objectstorage.core.ProviderClient;
 import com.example.objectstorage.core.ProviderClientSupport;
+import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,7 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -76,24 +78,30 @@ public final class S3ProviderClient implements ProviderClient {
         String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
         String key = request.key();
-        return operations.executeKeyOperation(LOGGER, "upload", targetBucket, key, () -> {
+        return operations.executeKeyOperation(LOGGER, "upload stream", targetBucket, key, () -> {
             PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                     .bucket(targetBucket)
                     .key(key)
                     .metadata(request.metadata())
                     .contentType(request.contentType())
                     .build();
-            PutObjectResponse response = s3Client.putObject(putObjectRequest, RequestBody.fromBytes(request.content()));
-
-            StoredObject storedObject = new StoredObject(
-                    provider(),
-                    targetBucket,
-                    key,
-                    response.eTag(),
-                    response.versionId()
-            );
-            LOGGER.info("S3 upload completed: bucket={}, key={}", targetBucket, key);
-            return storedObject;
+            try (var input = request.content()) {
+                PutObjectResponse response = s3Client.putObject(
+                        putObjectRequest,
+                        RequestBody.fromInputStream(input, request.contentLength())
+                );
+                StoredObject storedObject = new StoredObject(
+                        provider(),
+                        targetBucket,
+                        key,
+                        response.eTag(),
+                        response.versionId()
+                );
+                LOGGER.info("S3 upload stream completed: bucket={}, key={}, size={}", targetBucket, key, request.contentLength());
+                return storedObject;
+            } catch (IOException ex) {
+                throw new ObjectStorageException("S3 upload stream failed while reading content for key: " + key, ex);
+            }
         });
     }
 
@@ -102,27 +110,26 @@ public final class S3ProviderClient implements ProviderClient {
         String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
         String key = request.key();
-        return operations.executeKeyOperation(LOGGER, "download", targetBucket, key, () -> {
-            ResponseBytes<GetObjectResponse> objectBytes = s3Client.getObjectAsBytes(
+        return operations.executeKeyOperation(LOGGER, "download stream", targetBucket, key, () -> {
+            ResponseInputStream<GetObjectResponse> stream = s3Client.getObject(
                     GetObjectRequest.builder()
                             .bucket(targetBucket)
                             .key(key)
                             .build()
             );
-            GetObjectResponse response = objectBytes.response();
+            GetObjectResponse response = stream.response();
             Long contentLength = response.contentLength();
-            long size = contentLength == null ? objectBytes.asByteArray().length : contentLength;
-
+            long size = contentLength == null ? 0L : contentLength;
             RetrievedObject retrievedObject = new RetrievedObject(
                     provider(),
                     targetBucket,
                     key,
-                    objectBytes.asByteArray(),
+                    stream,
                     response.contentType(),
                     response.metadata(),
                     size
             );
-            LOGGER.info("S3 download completed: bucket={}, key={}, size={}", targetBucket, key, size);
+            LOGGER.info("S3 download stream opened: bucket={}, key={}, size={}", targetBucket, key, size);
             return retrievedObject;
         });
     }

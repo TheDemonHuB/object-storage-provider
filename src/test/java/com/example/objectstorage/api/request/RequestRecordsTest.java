@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.io.ByteArrayInputStream;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class RequestRecordsTest {
@@ -48,5 +50,23 @@ class RequestRecordsTest {
         assertThrows(IllegalArgumentException.class, () -> new CopyFileRequest("a.txt", " "));
         assertThrows(IllegalArgumentException.class, () -> new MoveFileRequest(" ", "a.txt"));
         assertThrows(IllegalArgumentException.class, () -> new MoveFileRequest("a.txt", " "));
+    }
+
+    @Test
+    void shouldValidateUploadRequest() {
+        UploadFileRequest request = new UploadFileRequest(
+                "docs/a.txt",
+                new ByteArrayInputStream(new byte[]{1}),
+                1L,
+                "text/plain",
+                Map.of("k", "v")
+        );
+
+        assertEquals("docs/a.txt", request.key());
+        assertEquals(1L, request.contentLength());
+        assertEquals("text/plain", request.contentType());
+        assertEquals("v", request.metadata().get("k"));
+        assertThrows(IllegalArgumentException.class, () ->
+                new UploadFileRequest("a.txt", new ByteArrayInputStream(new byte[]{1}), 0L, null, Map.of()));
     }
 }

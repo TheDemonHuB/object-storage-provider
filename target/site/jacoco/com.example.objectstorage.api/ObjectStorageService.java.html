@@ -5,9 +5,11 @@ import com.example.objectstorage.api.request.GetFileRequest;
 import com.example.objectstorage.api.request.ListFilesRequest;
 import com.example.objectstorage.api.request.MoveFileRequest;
 import com.example.objectstorage.api.request.UploadFileRequest;
+import com.example.objectstorage.api.request.UploadFileStreamRequest;
 import com.example.objectstorage.api.request.CopyFileRequest;
 import com.example.objectstorage.api.response.DeletedObject;
 import com.example.objectstorage.api.response.RetrievedObject;
+import com.example.objectstorage.api.response.RetrievedStreamObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
 import java.util.List;
@@ -24,9 +26,19 @@ public interface ObjectStorageService extends AutoCloseable {
     List&lt;StoredObject&gt; saveFiles(List&lt;UploadFileRequest&gt; requests);
 
     /**
+     * Saves files from streams and returns stored metadata in the same order as the input.
+     */
+    List&lt;StoredObject&gt; saveFilesStream(List&lt;UploadFileStreamRequest&gt; requests);
+
+    /**
      * Retrieves files from object storage in the same order as the input.
      */
     List&lt;RetrievedObject&gt; getFiles(List&lt;GetFileRequest&gt; requests);
+
+    /**
+     * Retrieves files as streams in the same order as the input.
+     */
+    List&lt;RetrievedStreamObject&gt; getFilesStream(List&lt;GetFileRequest&gt; requests);
 
     /**
      * Deletes files from object storage in the same order as the input.
@@ -51,6 +63,6 @@ public interface ObjectStorageService extends AutoCloseable {
     @Override
     default void close() {
         // no-op by default
-<span class="fc" id="L54">    }</span>
+<span class="fc" id="L66">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

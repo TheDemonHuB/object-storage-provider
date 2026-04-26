@@ -1,136 +1,40 @@
 package com.example.objectstorage.api.response;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.example.objectstorage.api.StorageProvider;
+import java.io.ByteArrayInputStream;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class RetrievedObjectTest {
     @Test
-    void shouldDefensivelyCopyContentAndUseContentBasedEquality() {
-        byte[] firstBytes = new byte[]{1, 2, 3};
-        RetrievedObject expected = new RetrievedObject(
+    void shouldCreateAndCloseRetrievedObject() {
+        RetrievedObject object = new RetrievedObject(
                 StorageProvider.S3,
                 "bucket",
                 "key",
-                firstBytes,
-                "text/plain",
-                Map.of("owner", "team-a"),
-                3
-        );
-        RetrievedObject actual = new RetrievedObject(
-                StorageProvider.S3,
-                "bucket",
-                "key",
-                new byte[]{1, 2, 3},
-                "text/plain",
-                Map.of("owner", "team-a"),
-                3
+                new ByteArrayInputStream(new byte[]{1, 2, 3}),
+                "application/octet-stream",
+                Map.of("a", "b"),
+                3L
         );
 
-        firstBytes[0] = 99;
-        assertArrayEquals(new byte[]{1, 2, 3}, expected.content());
-        assertEquals(expected, actual);
-        assertEquals(expected.hashCode(), actual.hashCode());
-        assertEquals(expected, expected);
-        assertNotEquals("different-type", expected);
-        assertTrue(expected.toString().contains("content=byte[3]"));
-        assertTrue(expected.toString().contains("size=3"));
+        assertEquals(StorageProvider.S3, object.provider());
+        assertEquals("bucket", object.bucket());
+        assertEquals("key", object.key());
+        assertEquals(3L, object.size());
+        object.close();
     }
 
     @Test
-    void shouldRejectNegativeSize() {
-        StorageProvider provider = StorageProvider.S3;
-        String bucket = "bucket";
-        String key = "key";
-        byte[] content = new byte[]{1};
-        String contentType = null;
-        Map<String, String> metadata = Map.of();
-        long size = -1;
-
+    void shouldRejectInvalidRetrievedObject() {
+        assertThrows(NullPointerException.class, () ->
+                new RetrievedObject(null, "bucket", "key", new ByteArrayInputStream(new byte[]{1}), null, Map.of(), 1L));
         assertThrows(IllegalArgumentException.class, () ->
-                new RetrievedObject(provider, bucket, key, content, contentType, metadata, size));
-    }
-
-    @Test
-    void shouldReturnFalseWhenAnySignificantFieldDiffers() {
-        RetrievedObject base = new RetrievedObject(
-                StorageProvider.S3,
-                "bucket",
-                "key",
-                new byte[]{1, 2, 3},
-                "text/plain",
-                Map.of("owner", "team-a"),
-                3
-        );
-
-        assertNotEquals(base, new RetrievedObject(
-                StorageProvider.GCP,
-                "bucket",
-                "key",
-                new byte[]{1, 2, 3},
-                "text/plain",
-                Map.of("owner", "team-a"),
-                3
-        ));
-        assertNotEquals(base, new RetrievedObject(
-                StorageProvider.S3,
-                "bucket-2",
-                "key",
-                new byte[]{1, 2, 3},
-                "text/plain",
-                Map.of("owner", "team-a"),
-                3
-        ));
-        assertNotEquals(base, new RetrievedObject(
-                StorageProvider.S3,
-                "bucket",
-                "key-2",
-                new byte[]{1, 2, 3},
-                "text/plain",
-                Map.of("owner", "team-a"),
-                3
-        ));
-        assertNotEquals(base, new RetrievedObject(
-                StorageProvider.S3,
-                "bucket",
-                "key",
-                new byte[]{9, 8, 7},
-                "text/plain",
-                Map.of("owner", "team-a"),
-                3
-        ));
-        assertNotEquals(base, new RetrievedObject(
-                StorageProvider.S3,
-                "bucket",
-                "key",
-                new byte[]{1, 2, 3},
-                "application/json",
-                Map.of("owner", "team-a"),
-                3
-        ));
-        assertNotEquals(base, new RetrievedObject(
-                StorageProvider.S3,
-                "bucket",
-                "key",
-                new byte[]{1, 2, 3},
-                "text/plain",
-                Map.of("owner", "team-b"),
-                3
-        ));
-        assertNotEquals(base, new RetrievedObject(
-                StorageProvider.S3,
-                "bucket",
-                "key",
-                new byte[]{1, 2, 3},
-                "text/plain",
-                Map.of("owner", "team-a"),
-                4
-        ));
+                new RetrievedObject(StorageProvider.S3, " ", "key", new ByteArrayInputStream(new byte[]{1}), null, Map.of(), 1L));
+        assertThrows(IllegalArgumentException.class, () ->
+                new RetrievedObject(StorageProvider.S3, "bucket", "key", new ByteArrayInputStream(new byte[]{1}), null, Map.of(), -1L));
     }
 }

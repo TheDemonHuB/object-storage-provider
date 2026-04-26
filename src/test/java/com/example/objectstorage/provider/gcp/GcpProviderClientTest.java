@@ -18,10 +18,12 @@ import com.example.objectstorage.api.response.RetrievedObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
 import com.google.api.gax.paging.Page;
+import com.google.cloud.ReadChannel;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.BlobInfo;
+import java.io.ByteArrayInputStream;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -29,17 +31,18 @@ import org.junit.jupiter.api.Test;
 
 class GcpProviderClientTest {
     @Test
-    void shouldSaveFile() {
+    void shouldSaveFile() throws Exception {
         Storage storage = mock(Storage.class);
         Blob blob = mock(Blob.class);
-        when(storage.create(any(BlobInfo.class), any(byte[].class))).thenReturn(blob);
+        when(storage.createFrom(any(BlobInfo.class), any(java.io.InputStream.class))).thenReturn(blob);
         when(blob.getEtag()).thenReturn("etag");
         when(blob.getGeneration()).thenReturn(7L);
 
         GcpProviderClient client = new GcpProviderClient(storage);
         StoredObject result = client.saveFile("bucket", new UploadFileRequest(
                 "docs/a.txt",
-                new byte[]{1, 2},
+                new ByteArrayInputStream(new byte[]{1, 2}),
+                2L,
                 "text/plain",
                 Map.of("owner", "team")
         ));
@@ -52,8 +55,9 @@ class GcpProviderClientTest {
     void shouldGetFile() {
         Storage storage = mock(Storage.class);
         Blob blob = mock(Blob.class);
+        ReadChannel channel = mock(ReadChannel.class);
         when(storage.get(any(BlobId.class))).thenReturn(blob);
-        when(blob.getContent()).thenReturn(new byte[]{1, 2, 3});
+        when(blob.reader()).thenReturn(channel);
         when(blob.getMetadata()).thenReturn(Map.of("owner", "team"));
         when(blob.getSize()).thenReturn(3L);
         when(blob.getContentType()).thenReturn("text/plain");

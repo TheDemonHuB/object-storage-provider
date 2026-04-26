@@ -274,21 +274,24 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
                     destinationKey
             );
         }
-        RetrievedObject sourceObject = resolveClient(sourceTarget.provider()).getFile(
+        StoredObject storedObject;
+        try (RetrievedObject sourceObject = resolveClient(sourceTarget.provider()).getFile(
                 sourceTarget.bucket(),
                 new GetFileRequest(request.sourceKey(), sourceTarget.provider(), sourceTarget.bucket())
-        );
-        StoredObject storedObject = resolveClient(targetTarget.provider()).saveFile(
-                targetTarget.bucket(),
-                new UploadFileRequest(
-                        request.targetKey(),
-                        sourceObject.content(),
-                        sourceObject.contentType(),
-                        sourceObject.metadata(),
-                        targetTarget.provider(),
-                        targetTarget.bucket()
-                )
-        );
+        )) {
+            storedObject = resolveClient(targetTarget.provider()).saveFile(
+                    targetTarget.bucket(),
+                    new UploadFileRequest(
+                            request.targetKey(),
+                            sourceObject.content(),
+                            sourceObject.size(),
+                            sourceObject.contentType(),
+                            sourceObject.metadata(),
+                            targetTarget.provider(),
+                            targetTarget.bucket()
+                    )
+            );
+        }
         StoredObject result = new StoredObject(
                 storedObject.provider(),
                 storedObject.bucket(),
@@ -321,6 +324,7 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
 
     private StoredObject moveOne(MoveFileRequest request) {
         ResolvedTarget sourceTarget = resolveTarget(request.sourceProvider(), request.sourceBucket());
+        ResolvedTarget targetTarget = resolveTarget(request.targetProvider(), request.targetBucket());
         StoredObject copiedObject = copyOne(new CopyFileRequest(
                 request.sourceKey(),
                 request.targetKey(),
@@ -329,10 +333,53 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
                 request.targetProvider(),
                 request.targetBucket()
         ));
-        resolveClient(sourceTarget.provider()).deleteFile(
-                sourceTarget.bucket(),
-                new DeleteFileRequest(request.sourceKey(), sourceTarget.provider(), sourceTarget.bucket())
-        );
+        try {
+            resolveClient(sourceTarget.provider()).deleteFile(
+                    sourceTarget.bucket(),
+                    new DeleteFileRequest(request.sourceKey(), sourceTarget.provider(), sourceTarget.bucket())
+            );
+        } catch (RuntimeException sourceDeleteFailure) {
+            LOGGER.warn(
+                    "Move source delete failed, attempting compensation: sourceProvider={}, sourceBucket={}, sourceKey={}, targetProvider={}, targetBucket={}, targetKey={}",
+                    sourceTarget.provider(),
+                    sourceTarget.bucket(),
+                    request.sourceKey(),
+                    targetTarget.provider(),
+                    targetTarget.bucket(),
+                    copiedObject.key(),
+                    sourceDeleteFailure
+            );
+            try {
+                resolveClient(copiedObject.provider()).deleteFile(
+                        copiedObject.bucket(),
+                        new DeleteFileRequest(copiedObject.key(), copiedObject.provider(), copiedObject.bucket())
+                );
+                LOGGER.info(
+                        "Move compensation delete completed: targetProvider={}, targetBucket={}, targetKey={}",
+                        copiedObject.provider(),
+                        copiedObject.bucket(),
+                        copiedObject.key()
+                );
+            } catch (RuntimeException compensationFailure) {
+                LOGGER.warn(
+                        "Move compensation delete failed: targetProvider={}, targetBucket={}, targetKey={}",
+                        copiedObject.provider(),
+                        copiedObject.bucket(),
+                        copiedObject.key(),
+                        compensationFailure
+                );
+                sourceDeleteFailure.addSuppressed(new ObjectStorageException(
+                        "Move compensation delete failed for "
+                                + copiedObject.provider() + ":" + copiedObject.bucket() + "/" + copiedObject.key(),
+                        compensationFailure
+                ));
+            }
+            throw new ObjectStorageException(
+                    "Move failed after copy; source delete failed for "
+                            + sourceTarget.provider() + ":" + sourceTarget.bucket() + "/" + request.sourceKey(),
+                    sourceDeleteFailure
+            );
+        }
         return copiedObject;
     }
 
@@ -845,6 +892,7 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
             UploadFileRequest storedRequest = new UploadFileRequest(
                     storedKey,
                     originalRequest.content(),
+                    originalRequest.contentLength(),
                     originalRequest.contentType(),
                     originalRequest.metadata(),
                     target.provider(),
@@ -870,6 +918,10 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
 
     private void validateSaveRequest(UploadFileRequest request) {
         String normalizedOriginalKey = normalizeUserKey(request.key());
+        validateSaveConstraints(normalizedOriginalKey, request.contentLength());
+    }
+
+    private void validateSaveConstraints(String normalizedOriginalKey, long contentLength) {
         if (allowedFileExtensions != null) {
             String extension = extractExtension(normalizedOriginalKey);
             if (!allowedFileExtensions.contains(extension)) {
@@ -878,9 +930,9 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
                 );
             }
         }
-        if (maxFileSizeBytes != null && request.content().length > maxFileSizeBytes) {
+        if (maxFileSizeBytes != null && contentLength > maxFileSizeBytes) {
             throw new IllegalArgumentException(
-                    "file size " + request.content().length + " bytes exceeds maxFileSizeBytes=" + maxFileSizeBytes
+                    "file size " + contentLength + " bytes exceeds maxFileSizeBytes=" + maxFileSizeBytes
             );
         }
     }

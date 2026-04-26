@@ -1,7 +1,6 @@
 package com.example.objectstorage.core;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-
 import com.example.objectstorage.api.StorageProvider;
 import com.example.objectstorage.api.request.DeleteFileRequest;
 import com.example.objectstorage.api.request.GetFileRequest;
@@ -10,6 +9,7 @@ import com.example.objectstorage.api.request.UploadFileRequest;
 import com.example.objectstorage.api.response.RetrievedObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
+import java.io.ByteArrayInputStream;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -30,7 +30,7 @@ class ProviderClientTest {
 
             @Override
             public RetrievedObject getFile(String bucket, GetFileRequest request) {
-                return new RetrievedObject(StorageProvider.S3, bucket, request.key(), new byte[]{1}, null, Map.of(), 1L);
+                return new RetrievedObject(StorageProvider.S3, bucket, request.key(), new ByteArrayInputStream(new byte[]{1}), null, Map.of(), 1L);
             }
 
             @Override

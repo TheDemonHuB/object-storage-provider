@@ -5,9 +5,13 @@ import com.example.objectstorage.api.request.DeleteFileRequest;
 import com.example.objectstorage.api.request.GetFileRequest;
 import com.example.objectstorage.api.request.ListFilesRequest;
 import com.example.objectstorage.api.request.UploadFileRequest;
+import com.example.objectstorage.api.request.UploadFileStreamRequest;
 import com.example.objectstorage.api.response.RetrievedObject;
+import com.example.objectstorage.api.response.RetrievedStreamObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.util.List;
 
 /**
@@ -25,9 +29,47 @@ public interface ProviderClient extends AutoCloseable {
     StoredObject saveFile(String bucket, UploadFileRequest request);
 
     /**
+     * Uploads a file stream to the given bucket/container.
+     */
+    default StoredObject saveFileStream(String bucket, UploadFileStreamRequest request) {
+<span class="fc" id="L35">        try (var input = request.content()) {</span>
+<span class="fc" id="L36">            byte[] content = input.readAllBytes();</span>
+<span class="fc" id="L37">            return saveFile(</span>
+                    bucket,
+                    new UploadFileRequest(
+<span class="fc" id="L40">                            request.key(),</span>
+                            content,
+<span class="fc" id="L42">                            request.contentType(),</span>
+<span class="fc" id="L43">                            request.metadata(),</span>
+<span class="fc" id="L44">                            request.provider(),</span>
+<span class="fc" id="L45">                            request.bucket()</span>
+                    )
+            );
+<span class="nc" id="L48">        } catch (IOException ex) {</span>
+<span class="nc" id="L49">            throw new ObjectStorageException(&quot;Failed to read upload stream for key: &quot; + request.key(), ex);</span>
+        }
+    }
+
+    /**
      * Downloads a file from the given bucket/container.
      */
     RetrievedObject getFile(String bucket, GetFileRequest request);
+
+    /**
+     * Downloads a file stream from the given bucket/container.
+     */
+    default RetrievedStreamObject getFileStream(String bucket, GetFileRequest request) {
+<span class="fc" id="L62">        RetrievedObject object = getFile(bucket, request);</span>
+<span class="fc" id="L63">        return new RetrievedStreamObject(</span>
+<span class="fc" id="L64">                object.provider(),</span>
+<span class="fc" id="L65">                object.bucket(),</span>
+<span class="fc" id="L66">                object.key(),</span>
+<span class="fc" id="L67">                new ByteArrayInputStream(object.content()),</span>
+<span class="fc" id="L68">                object.contentType(),</span>
+<span class="fc" id="L69">                object.metadata(),</span>
+<span class="fc" id="L70">                object.size()</span>
+        );
+    }
 
     /**
      * Deletes a file from the given bucket/container.
@@ -42,6 +84,6 @@ public interface ProviderClient extends AutoCloseable {
     @Override
     default void close() {
         // no-op by default
-<span class="fc" id="L45">    }</span>
+<span class="fc" id="L87">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -8,6 +8,7 @@ import com.azure.storage.blob.models.BlobHttpHeaders;
 import com.azure.storage.blob.models.BlobItem;
 import com.azure.storage.blob.models.BlobProperties;
 import com.azure.storage.blob.models.ListBlobsOptions;
+import com.azure.storage.blob.specialized.BlobInputStream;
 import com.example.objectstorage.api.StorageProvider;
 import com.example.objectstorage.api.request.DeleteFileRequest;
 import com.example.objectstorage.api.request.GetFileRequest;
@@ -17,10 +18,9 @@ import com.example.objectstorage.api.response.RetrievedObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
 import com.example.objectstorage.config.AzureBlobStorageConfig;
+import com.example.objectstorage.core.ObjectStorageException;
 import com.example.objectstorage.core.ProviderClient;
 import com.example.objectstorage.core.ProviderClientSupport;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -56,9 +56,16 @@ public final class AzureBlobProviderClient implements ProviderClient {
         String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
         String key = request.key();
-        return operations.executeKeyOperation(LOGGER, "upload", targetBucket, key, () -> {
+        return operations.executeKeyOperation(LOGGER, "upload stream", targetBucket, key, () -> {
             BlobClient blobClient = resolveBlobClient(targetBucket, key);
-            blobClient.upload(new ByteArrayInputStream(request.content()), request.content().length, true);
+            try (var input = request.content()) {
+                blobClient.upload(input, request.contentLength(), true);
+            } catch (Exception ex) {
+                throw new ObjectStorageException(
+                        "Azure upload stream failed for container/key: " + targetBucket + "/" + key,
+                        ex
+                );
+            }
 
             if (request.contentType() != null) {
                 blobClient.setHttpHeaders(new BlobHttpHeaders().setContentType(request.contentType()));
@@ -75,7 +82,7 @@ public final class AzureBlobProviderClient implements ProviderClient {
                     properties.getETag(),
                     null
             );
-            LOGGER.info("Azure upload completed: container={}, key={}", targetBucket, key);
+            LOGGER.info("Azure upload stream completed: container={}, key={}, size={}", targetBucket, key, request.contentLength());
             return storedObject;
         });
     }
@@ -85,27 +92,25 @@ public final class AzureBlobProviderClient implements ProviderClient {
         String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
         String key = request.key();
-        return operations.executeKeyOperation(LOGGER, "download", targetBucket, key, () -> {
+        return operations.executeKeyOperation(LOGGER, "download stream", targetBucket, key, () -> {
             BlobClient blobClient = resolveBlobClient(targetBucket, key);
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            blobClient.downloadStream(outputStream);
-            byte[] bytes = outputStream.toByteArray();
             BlobProperties properties = blobClient.getProperties();
+            BlobInputStream stream = blobClient.openInputStream();
 
             Long blobSize = properties.getBlobSize();
-            long size = blobSize == null ? bytes.length : blobSize;
+            long size = blobSize == null ? 0L : blobSize;
             Map<String, String> metadata = properties.getMetadata() == null ? Map.of() : properties.getMetadata();
 
             RetrievedObject retrievedObject = new RetrievedObject(
                     provider(),
                     targetBucket,
                     key,
-                    bytes,
+                    stream,
                     properties.getContentType(),
                     metadata,
                     size
             );
-            LOGGER.info("Azure download completed: container={}, key={}, size={}", targetBucket, key, size);
+            LOGGER.info("Azure download stream opened: container={}, key={}, size={}", targetBucket, key, size);
             return retrievedObject;
         });
     }

@@ -3,6 +3,7 @@
 import com.google.api.gax.paging.Page;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.auth.oauth2.ServiceAccountCredentials;
+import com.google.cloud.ReadChannel;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.BlobInfo;
@@ -14,7 +15,9 @@ import com.example.objectstorage.api.request.DeleteFileRequest;
 import com.example.objectstorage.api.request.GetFileRequest;
 import com.example.objectstorage.api.request.ListFilesRequest;
 import com.example.objectstorage.api.request.UploadFileRequest;
+import com.example.objectstorage.api.request.UploadFileStreamRequest;
 import com.example.objectstorage.api.response.RetrievedObject;
+import com.example.objectstorage.api.response.RetrievedStreamObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
 import com.example.objectstorage.config.GcpStorageConfig;
@@ -23,6 +26,8 @@ import com.example.objectstorage.core.ProviderClient;
 import com.example.objectstorage.core.ProviderClientSupport;
 import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
+import java.io.IOException;
+import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -34,181 +39,245 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public final class GcpProviderClient implements ProviderClient {
-<span class="fc" id="L37">    private static final Logger LOGGER = LoggerFactory.getLogger(GcpProviderClient.class);</span>
+<span class="fc" id="L42">    private static final Logger LOGGER = LoggerFactory.getLogger(GcpProviderClient.class);</span>
     private static final String BUCKET_FIELD = &quot;bucket&quot;;
 
     private final Storage storage;
-<span class="pc" id="L41">    private final ProviderClientSupport operations = new ProviderClientSupport(&quot;GCP&quot;, BUCKET_FIELD);</span>
+<span class="pc" id="L46">    private final ProviderClientSupport operations = new ProviderClientSupport(&quot;GCP&quot;, BUCKET_FIELD);</span>
 
-<span class="nc" id="L43">    public GcpProviderClient(GcpStorageConfig config) {</span>
-<span class="nc" id="L44">        Objects.requireNonNull(config, &quot;config must not be null&quot;);</span>
-<span class="nc" id="L45">        this.storage = createStorageClient(config);</span>
-<span class="nc" id="L46">    }</span>
+<span class="nc" id="L48">    public GcpProviderClient(GcpStorageConfig config) {</span>
+<span class="nc" id="L49">        Objects.requireNonNull(config, &quot;config must not be null&quot;);</span>
+<span class="nc" id="L50">        this.storage = createStorageClient(config);</span>
+<span class="nc" id="L51">    }</span>
 
-<span class="fc" id="L48">    GcpProviderClient(Storage storage) {</span>
-<span class="fc" id="L49">        this.storage = Objects.requireNonNull(storage, &quot;storage must not be null&quot;);</span>
-<span class="fc" id="L50">    }</span>
+<span class="fc" id="L53">    GcpProviderClient(Storage storage) {</span>
+<span class="fc" id="L54">        this.storage = Objects.requireNonNull(storage, &quot;storage must not be null&quot;);</span>
+<span class="fc" id="L55">    }</span>
 
     @Override
     public StorageProvider provider() {
-<span class="fc" id="L54">        return StorageProvider.GCP;</span>
+<span class="fc" id="L59">        return StorageProvider.GCP;</span>
     }
 
     @Override
     public StoredObject saveFile(String bucket, UploadFileRequest request) {
-<span class="fc" id="L59">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
-<span class="fc" id="L60">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
-<span class="fc" id="L61">        String key = request.key();</span>
-<span class="fc" id="L62">        return operations.executeKeyOperation(LOGGER, &quot;upload&quot;, targetBucket, key, () -&gt; {</span>
-<span class="fc" id="L63">            BlobInfo.Builder infoBuilder = BlobInfo.newBuilder(BlobId.of(targetBucket, key));</span>
-<span class="pc bpc" id="L64" title="1 of 2 branches missed.">            if (request.contentType() != null) {</span>
-<span class="fc" id="L65">                infoBuilder.setContentType(request.contentType());</span>
+<span class="fc" id="L64">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="fc" id="L65">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="fc" id="L66">        String key = request.key();</span>
+<span class="fc" id="L67">        return operations.executeKeyOperation(LOGGER, &quot;upload&quot;, targetBucket, key, () -&gt; {</span>
+<span class="fc" id="L68">            BlobInfo.Builder infoBuilder = BlobInfo.newBuilder(BlobId.of(targetBucket, key));</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">            if (request.contentType() != null) {</span>
+<span class="fc" id="L70">                infoBuilder.setContentType(request.contentType());</span>
             }
-<span class="pc bpc" id="L67" title="1 of 2 branches missed.">            if (!request.metadata().isEmpty()) {</span>
-<span class="fc" id="L68">                infoBuilder.setMetadata(request.metadata());</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">            if (!request.metadata().isEmpty()) {</span>
+<span class="fc" id="L73">                infoBuilder.setMetadata(request.metadata());</span>
             }
 
-<span class="fc" id="L71">            Blob createdBlob = storage.create(infoBuilder.build(), request.content());</span>
-<span class="pc bpc" id="L72" title="1 of 2 branches missed.">            String version = createdBlob.getGeneration() == null ? null : String.valueOf(createdBlob.getGeneration());</span>
-<span class="fc" id="L73">            StoredObject storedObject = new StoredObject(</span>
-<span class="fc" id="L74">                    provider(),</span>
+<span class="fc" id="L76">            Blob createdBlob = storage.create(infoBuilder.build(), request.content());</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">            String version = createdBlob.getGeneration() == null ? null : String.valueOf(createdBlob.getGeneration());</span>
+<span class="fc" id="L78">            StoredObject storedObject = new StoredObject(</span>
+<span class="fc" id="L79">                    provider(),</span>
                     targetBucket,
                     key,
-<span class="fc" id="L77">                    createdBlob.getEtag(),</span>
+<span class="fc" id="L82">                    createdBlob.getEtag(),</span>
                     version
             );
-<span class="fc" id="L80">            LOGGER.info(&quot;GCP upload completed: bucket={}, key={}&quot;, targetBucket, key);</span>
-<span class="fc" id="L81">            return storedObject;</span>
+<span class="fc" id="L85">            LOGGER.info(&quot;GCP upload completed: bucket={}, key={}&quot;, targetBucket, key);</span>
+<span class="fc" id="L86">            return storedObject;</span>
+        });
+    }
+
+    @Override
+    public StoredObject saveFileStream(String bucket, UploadFileStreamRequest request) {
+<span class="nc" id="L92">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="nc" id="L93">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="nc" id="L94">        String key = request.key();</span>
+<span class="nc" id="L95">        return operations.executeKeyOperation(LOGGER, &quot;upload stream&quot;, targetBucket, key, () -&gt; {</span>
+<span class="nc" id="L96">            BlobInfo.Builder infoBuilder = BlobInfo.newBuilder(BlobId.of(targetBucket, key));</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            if (request.contentType() != null) {</span>
+<span class="nc" id="L98">                infoBuilder.setContentType(request.contentType());</span>
+            }
+<span class="nc bnc" id="L100" title="All 2 branches missed.">            if (!request.metadata().isEmpty()) {</span>
+<span class="nc" id="L101">                infoBuilder.setMetadata(request.metadata());</span>
+            }
+
+<span class="nc" id="L104">            try (var input = request.content()) {</span>
+<span class="nc" id="L105">                Blob createdBlob = storage.createFrom(infoBuilder.build(), input);</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">                String version = createdBlob.getGeneration() == null ? null : String.valueOf(createdBlob.getGeneration());</span>
+<span class="nc" id="L107">                StoredObject storedObject = new StoredObject(</span>
+<span class="nc" id="L108">                        provider(),</span>
+                        targetBucket,
+                        key,
+<span class="nc" id="L111">                        createdBlob.getEtag(),</span>
+                        version
+                );
+<span class="nc" id="L114">                LOGGER.info(&quot;GCP upload stream completed: bucket={}, key={}, size={}&quot;, targetBucket, key, request.contentLength());</span>
+<span class="nc" id="L115">                return storedObject;</span>
+<span class="nc" id="L116">            } catch (IOException ex) {</span>
+<span class="nc" id="L117">                throw new ObjectStorageException(&quot;GCP upload stream failed for bucket/key: &quot; + targetBucket + &quot;/&quot; + key, ex);</span>
+            }
         });
     }
 
     @Override
     public RetrievedObject getFile(String bucket, GetFileRequest request) {
-<span class="fc" id="L87">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
-<span class="fc" id="L88">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
-<span class="fc" id="L89">        String key = request.key();</span>
-<span class="fc" id="L90">        return operations.executeKeyOperation(LOGGER, &quot;download&quot;, targetBucket, key, () -&gt; {</span>
-<span class="fc" id="L91">            Blob blob = storage.get(BlobId.of(targetBucket, key));</span>
-<span class="pc bpc" id="L92" title="1 of 2 branches missed.">            if (blob == null) {</span>
-<span class="nc" id="L93">                throw new ObjectStorageException(&quot;GCP object not found: &quot; + targetBucket + &quot;/&quot; + key);</span>
+<span class="fc" id="L124">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="fc" id="L125">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="fc" id="L126">        String key = request.key();</span>
+<span class="fc" id="L127">        return operations.executeKeyOperation(LOGGER, &quot;download&quot;, targetBucket, key, () -&gt; {</span>
+<span class="fc" id="L128">            Blob blob = storage.get(BlobId.of(targetBucket, key));</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">            if (blob == null) {</span>
+<span class="nc" id="L130">                throw new ObjectStorageException(&quot;GCP object not found: &quot; + targetBucket + &quot;/&quot; + key);</span>
             }
 
-<span class="fc" id="L96">            byte[] bytes = blob.getContent();</span>
-<span class="pc bpc" id="L97" title="1 of 2 branches missed.">            Map&lt;String, String&gt; metadata = blob.getMetadata() == null ? Map.of() : blob.getMetadata();</span>
-<span class="fc" id="L98">            Long size = blob.getSize();</span>
+<span class="fc" id="L133">            byte[] bytes = blob.getContent();</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">            Map&lt;String, String&gt; metadata = blob.getMetadata() == null ? Map.of() : blob.getMetadata();</span>
+<span class="fc" id="L135">            Long size = blob.getSize();</span>
 
-<span class="fc" id="L100">            RetrievedObject retrievedObject = new RetrievedObject(</span>
-<span class="fc" id="L101">                    provider(),</span>
+<span class="fc" id="L137">            RetrievedObject retrievedObject = new RetrievedObject(</span>
+<span class="fc" id="L138">                    provider(),</span>
                     targetBucket,
                     key,
                     bytes,
-<span class="fc" id="L105">                    blob.getContentType(),</span>
+<span class="fc" id="L142">                    blob.getContentType(),</span>
                     metadata,
-<span class="pc bpc" id="L107" title="1 of 2 branches missed.">                    size == null ? bytes.length : size</span>
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">                    size == null ? bytes.length : size</span>
             );
-<span class="fc" id="L109">            LOGGER.info(</span>
+<span class="fc" id="L146">            LOGGER.info(</span>
                     &quot;GCP download completed: bucket={}, key={}, size={}&quot;,
                     targetBucket,
                     key,
-<span class="pc bpc" id="L113" title="1 of 2 branches missed.">                    size == null ? bytes.length : size</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">                    size == null ? bytes.length : size</span>
             );
-<span class="fc" id="L115">            return retrievedObject;</span>
+<span class="fc" id="L152">            return retrievedObject;</span>
+        });
+    }
+
+    @Override
+    public RetrievedStreamObject getFileStream(String bucket, GetFileRequest request) {
+<span class="nc" id="L158">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="nc" id="L159">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="nc" id="L160">        String key = request.key();</span>
+<span class="nc" id="L161">        return operations.executeKeyOperation(LOGGER, &quot;download stream&quot;, targetBucket, key, () -&gt; {</span>
+<span class="nc" id="L162">            Blob blob = storage.get(BlobId.of(targetBucket, key));</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">            if (blob == null) {</span>
+<span class="nc" id="L164">                throw new ObjectStorageException(&quot;GCP object not found: &quot; + targetBucket + &quot;/&quot; + key);</span>
+            }
+<span class="nc bnc" id="L166" title="All 2 branches missed.">            Map&lt;String, String&gt; metadata = blob.getMetadata() == null ? Map.of() : blob.getMetadata();</span>
+<span class="nc" id="L167">            Long size = blob.getSize();</span>
+<span class="nc" id="L168">            ReadChannel channel = blob.reader();</span>
+<span class="nc" id="L169">            RetrievedStreamObject retrievedStreamObject = new RetrievedStreamObject(</span>
+<span class="nc" id="L170">                    provider(),</span>
+                    targetBucket,
+                    key,
+<span class="nc" id="L173">                    Channels.newInputStream(channel),</span>
+<span class="nc" id="L174">                    blob.getContentType(),</span>
+                    metadata,
+<span class="nc bnc" id="L176" title="All 2 branches missed.">                    size == null ? 0L : size</span>
+            );
+<span class="nc" id="L178">            LOGGER.info(</span>
+                    &quot;GCP download stream opened: bucket={}, key={}, size={}&quot;,
+                    targetBucket,
+                    key,
+<span class="nc bnc" id="L182" title="All 2 branches missed.">                    size == null ? 0L : size</span>
+            );
+<span class="nc" id="L184">            return retrievedStreamObject;</span>
         });
     }
 
     @Override
     public void deleteFile(String bucket, DeleteFileRequest request) {
-<span class="fc" id="L121">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
-<span class="fc" id="L122">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
-<span class="fc" id="L123">        String key = request.key();</span>
-<span class="fc" id="L124">        operations.executeVoidKeyOperation(LOGGER, &quot;delete&quot;, targetBucket, key, () -&gt; {</span>
-<span class="fc" id="L125">            storage.delete(BlobId.of(targetBucket, key));</span>
-<span class="fc" id="L126">            LOGGER.info(&quot;GCP delete completed: bucket={}, key={}&quot;, targetBucket, key);</span>
-<span class="fc" id="L127">        });</span>
-<span class="fc" id="L128">    }</span>
+<span class="fc" id="L190">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="fc" id="L191">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="fc" id="L192">        String key = request.key();</span>
+<span class="fc" id="L193">        operations.executeVoidKeyOperation(LOGGER, &quot;delete&quot;, targetBucket, key, () -&gt; {</span>
+<span class="fc" id="L194">            storage.delete(BlobId.of(targetBucket, key));</span>
+<span class="fc" id="L195">            LOGGER.info(&quot;GCP delete completed: bucket={}, key={}&quot;, targetBucket, key);</span>
+<span class="fc" id="L196">        });</span>
+<span class="fc" id="L197">    }</span>
 
     @Override
     public List&lt;StorageObjectInfo&gt; listFiles(String bucket, ListFilesRequest request) {
-<span class="fc" id="L132">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
-<span class="fc" id="L133">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
-<span class="fc" id="L134">        String prefix = request.prefix();</span>
-<span class="fc" id="L135">        Integer maxResults = request.maxResults();</span>
-<span class="fc" id="L136">        return operations.executeListOperation(LOGGER, targetBucket, prefix, maxResults, () -&gt; {</span>
-<span class="fc" id="L137">            Page&lt;Blob&gt; blobs = storage.list(targetBucket, createListOptions(prefix, maxResults));</span>
-<span class="fc" id="L138">            List&lt;StorageObjectInfo&gt; objects = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L139" title="All 2 branches covered.">            for (Blob blob : blobs.iterateAll()) {</span>
-<span class="pc bpc" id="L140" title="2 of 6 branches missed.">                if (addBlobIfFile(blob, objects) &amp;&amp; maxResults != null &amp;&amp; objects.size() &gt;= maxResults) {</span>
-<span class="nc" id="L141">                    return completeList(targetBucket, objects);</span>
+<span class="fc" id="L201">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="fc" id="L202">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="fc" id="L203">        String prefix = request.prefix();</span>
+<span class="fc" id="L204">        Integer maxResults = request.maxResults();</span>
+<span class="fc" id="L205">        return operations.executeListOperation(LOGGER, targetBucket, prefix, maxResults, () -&gt; {</span>
+<span class="fc" id="L206">            Page&lt;Blob&gt; blobs = storage.list(targetBucket, createListOptions(prefix, maxResults));</span>
+<span class="fc" id="L207">            List&lt;StorageObjectInfo&gt; objects = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">            for (Blob blob : blobs.iterateAll()) {</span>
+<span class="pc bpc" id="L209" title="2 of 6 branches missed.">                if (addBlobIfFile(blob, objects) &amp;&amp; maxResults != null &amp;&amp; objects.size() &gt;= maxResults) {</span>
+<span class="nc" id="L210">                    return completeList(targetBucket, objects);</span>
                 }
-<span class="fc" id="L143">            }</span>
-<span class="fc" id="L144">            return completeList(targetBucket, objects);</span>
+<span class="fc" id="L212">            }</span>
+<span class="fc" id="L213">            return completeList(targetBucket, objects);</span>
         });
     }
 
     private boolean addBlobIfFile(Blob blob, List&lt;StorageObjectInfo&gt; objects) {
-<span class="fc" id="L149">        String key = blob.getName();</span>
-<span class="fc bfc" id="L150" title="All 2 branches covered.">        if (isDirectoryMarker(key)) {</span>
-<span class="fc" id="L151">            return false;</span>
+<span class="fc" id="L218">        String key = blob.getName();</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        if (isDirectoryMarker(key)) {</span>
+<span class="fc" id="L220">            return false;</span>
         }
-<span class="fc" id="L153">        Long size = blob.getSize();</span>
-<span class="fc" id="L154">        OffsetDateTime updatedAt = blob.getUpdateTimeOffsetDateTime();</span>
-<span class="fc" id="L155">        objects.add(new StorageObjectInfo(</span>
+<span class="fc" id="L222">        Long size = blob.getSize();</span>
+<span class="fc" id="L223">        OffsetDateTime updatedAt = blob.getUpdateTimeOffsetDateTime();</span>
+<span class="fc" id="L224">        objects.add(new StorageObjectInfo(</span>
                 key,
-<span class="fc bfc" id="L157" title="All 2 branches covered.">                size == null ? 0 : size,</span>
-<span class="fc bfc" id="L158" title="All 2 branches covered.">                updatedAt == null ? null : Instant.from(updatedAt)</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">                size == null ? 0 : size,</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">                updatedAt == null ? null : Instant.from(updatedAt)</span>
         ));
-<span class="fc" id="L160">        return true;</span>
+<span class="fc" id="L229">        return true;</span>
     }
 
     private List&lt;StorageObjectInfo&gt; completeList(String bucket, List&lt;StorageObjectInfo&gt; objects) {
-<span class="fc" id="L164">        List&lt;StorageObjectInfo&gt; storageObjectInfos = List.copyOf(objects);</span>
-<span class="fc" id="L165">        int itemCount = storageObjectInfos.size();</span>
-<span class="fc" id="L166">        LOGGER.info(&quot;GCP list completed: bucket={}, itemCount={}&quot;, bucket, itemCount);</span>
-<span class="fc" id="L167">        return storageObjectInfos;</span>
+<span class="fc" id="L233">        List&lt;StorageObjectInfo&gt; storageObjectInfos = List.copyOf(objects);</span>
+<span class="fc" id="L234">        int itemCount = storageObjectInfos.size();</span>
+<span class="fc" id="L235">        LOGGER.info(&quot;GCP list completed: bucket={}, itemCount={}&quot;, bucket, itemCount);</span>
+<span class="fc" id="L236">        return storageObjectInfos;</span>
     }
 
     private BlobListOption[] createListOptions(String prefix, Integer maxResults) {
-<span class="fc" id="L171">        List&lt;BlobListOption&gt; options = new ArrayList&lt;&gt;();</span>
-<span class="pc bpc" id="L172" title="1 of 2 branches missed.">        if (prefix != null) {</span>
-<span class="nc" id="L173">            options.add(BlobListOption.prefix(prefix));</span>
+<span class="fc" id="L240">        List&lt;BlobListOption&gt; options = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">        if (prefix != null) {</span>
+<span class="nc" id="L242">            options.add(BlobListOption.prefix(prefix));</span>
         }
-<span class="pc bpc" id="L175" title="1 of 2 branches missed.">        if (maxResults != null) {</span>
-<span class="fc" id="L176">            options.add(BlobListOption.pageSize(maxResults));</span>
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">        if (maxResults != null) {</span>
+<span class="fc" id="L245">            options.add(BlobListOption.pageSize(maxResults));</span>
         }
-<span class="fc" id="L178">        return options.toArray(BlobListOption[]::new);</span>
+<span class="fc" id="L247">        return options.toArray(BlobListOption[]::new);</span>
     }
 
     private Storage createStorageClient(GcpStorageConfig config) {
         try {
-<span class="nc" id="L183">            StorageOptions.Builder optionsBuilder = StorageOptions.newBuilder();</span>
+<span class="nc" id="L252">            StorageOptions.Builder optionsBuilder = StorageOptions.newBuilder();</span>
 
-<span class="nc bnc" id="L185" title="All 2 branches missed.">            if (config.projectId() != null) {</span>
-<span class="nc" id="L186">                optionsBuilder.setProjectId(config.projectId());</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">            if (config.projectId() != null) {</span>
+<span class="nc" id="L255">                optionsBuilder.setProjectId(config.projectId());</span>
             }
 
-<span class="nc bnc" id="L189" title="All 2 branches missed.">            if (config.credentialsPath() != null) {</span>
-<span class="nc" id="L190">                try (FileInputStream input = new FileInputStream(config.credentialsPath())) {</span>
-<span class="nc" id="L191">                    GoogleCredentials credentials = ServiceAccountCredentials.fromStream(input);</span>
-<span class="nc" id="L192">                    optionsBuilder.setCredentials(credentials);</span>
+<span class="nc bnc" id="L258" title="All 2 branches missed.">            if (config.credentialsPath() != null) {</span>
+<span class="nc" id="L259">                try (FileInputStream input = new FileInputStream(config.credentialsPath())) {</span>
+<span class="nc" id="L260">                    GoogleCredentials credentials = ServiceAccountCredentials.fromStream(input);</span>
+<span class="nc" id="L261">                    optionsBuilder.setCredentials(credentials);</span>
                 }
-<span class="nc bnc" id="L194" title="All 2 branches missed.">            } else if (config.credentialsJson() != null) {</span>
-<span class="nc" id="L195">                try (ByteArrayInputStream input = new ByteArrayInputStream(config.credentialsJson().getBytes(StandardCharsets.UTF_8))) {</span>
-<span class="nc" id="L196">                    GoogleCredentials credentials = ServiceAccountCredentials.fromStream(input);</span>
-<span class="nc" id="L197">                    optionsBuilder.setCredentials(credentials);</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">            } else if (config.credentialsJson() != null) {</span>
+<span class="nc" id="L264">                try (ByteArrayInputStream input = new ByteArrayInputStream(config.credentialsJson().getBytes(StandardCharsets.UTF_8))) {</span>
+<span class="nc" id="L265">                    GoogleCredentials credentials = ServiceAccountCredentials.fromStream(input);</span>
+<span class="nc" id="L266">                    optionsBuilder.setCredentials(credentials);</span>
                 }
             }
 
-<span class="nc" id="L201">            Storage service = optionsBuilder.build().getService();</span>
-<span class="nc bnc" id="L202" title="All 2 branches missed.">            boolean projectIdConfigured = config.projectId() != null;</span>
-<span class="nc" id="L203">            LOGGER.info(&quot;GCP storage client initialized: projectIdConfigured={}&quot;, projectIdConfigured);</span>
-<span class="nc" id="L204">            return service;</span>
-<span class="nc" id="L205">        } catch (Exception ex) {</span>
-<span class="nc" id="L206">            throw new ObjectStorageException(&quot;Unable to initialize GCP storage client&quot;, ex);</span>
+<span class="nc" id="L270">            Storage service = optionsBuilder.build().getService();</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">            boolean projectIdConfigured = config.projectId() != null;</span>
+<span class="nc" id="L272">            LOGGER.info(&quot;GCP storage client initialized: projectIdConfigured={}&quot;, projectIdConfigured);</span>
+<span class="nc" id="L273">            return service;</span>
+<span class="nc" id="L274">        } catch (Exception ex) {</span>
+<span class="nc" id="L275">            throw new ObjectStorageException(&quot;Unable to initialize GCP storage client&quot;, ex);</span>
         }
     }
 
     private boolean isDirectoryMarker(String key) {
-<span class="pc bpc" id="L211" title="1 of 4 branches missed.">        return key != null &amp;&amp; key.endsWith(&quot;/&quot;);</span>
+<span class="pc bpc" id="L280" title="1 of 4 branches missed.">        return key != null &amp;&amp; key.endsWith(&quot;/&quot;);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

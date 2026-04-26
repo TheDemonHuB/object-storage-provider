@@ -8,6 +8,7 @@ import com.example.objectstorage.api.request.UploadFileRequest;
 import com.example.objectstorage.api.response.RetrievedObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
+import java.io.ByteArrayInputStream;
 import java.util.List;
 import java.util.Map;
 
@@ -34,7 +35,7 @@ class StubProviderClient implements ProviderClient {
                 provider,
                 bucket,
                 request.key(),
-                new byte[]{1},
+                new ByteArrayInputStream(new byte[]{1}),
                 "application/octet-stream",
                 Map.of(),
                 1L

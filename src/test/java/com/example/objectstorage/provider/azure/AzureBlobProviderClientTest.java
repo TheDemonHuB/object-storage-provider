@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -24,7 +23,7 @@ import com.example.objectstorage.api.request.UploadFileRequest;
 import com.example.objectstorage.api.response.RetrievedObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
-import java.io.OutputStream;
+import java.io.ByteArrayInputStream;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -62,11 +61,7 @@ class AzureBlobProviderClientTest {
         when(properties.getBlobSize()).thenReturn(4L);
         when(properties.getContentType()).thenReturn("text/plain");
         when(properties.getMetadata()).thenReturn(null);
-        doAnswer(invocation -> {
-            OutputStream outputStream = invocation.getArgument(0);
-            outputStream.write(new byte[]{1, 2, 3, 4});
-            return null;
-        }).when(blobClient).downloadStream(any(OutputStream.class));
+        when(blobClient.openInputStream()).thenReturn(mock(com.azure.storage.blob.specialized.BlobInputStream.class));
 
         AzureBlobProviderClient client = new AzureBlobProviderClient(serviceClient);
         RetrievedObject result = client.getFile("docs", new GetFileRequest("customer/a.txt"));
@@ -130,7 +125,8 @@ class AzureBlobProviderClientTest {
     private static UploadFileRequest uploadRequest() {
         return new UploadFileRequest(
                 "customer/a.txt",
-                new byte[]{1, 2, 3},
+                new ByteArrayInputStream(new byte[]{1, 2, 3}),
+                3L,
                 "text/plain",
                 Map.of("owner", "team")
         );

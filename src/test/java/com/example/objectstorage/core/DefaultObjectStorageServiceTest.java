@@ -16,6 +16,7 @@ import com.example.objectstorage.api.response.DeletedObject;
 import com.example.objectstorage.api.response.RetrievedObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
+import java.io.ByteArrayInputStream;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -227,6 +228,35 @@ class DefaultObjectStorageServiceTest {
     }
 
     @Test
+    void shouldRollbackCopiedTargetWhenMoveSourceDeleteFails() {
+        FailingDeleteCopyMoveProviderClient s3Provider = new FailingDeleteCopyMoveProviderClient(StorageProvider.S3);
+        TrackingCopyMoveProviderClient azureProvider = new TrackingCopyMoveProviderClient(StorageProvider.AZURE);
+        DefaultObjectStorageService service = new DefaultObjectStorageService(
+                Map.of(StorageProvider.S3, s3Provider, StorageProvider.AZURE, azureProvider),
+                StorageProvider.S3,
+                TEST_BUCKET
+        );
+
+        ObjectStorageException ex = assertThrows(
+                ObjectStorageException.class,
+                () -> service.moveFiles(List.of(new MoveFileRequest(
+                        "source/archive.zip",
+                        "target/archive.zip",
+                        StorageProvider.S3,
+                        "source-bucket",
+                        StorageProvider.AZURE,
+                        "target-bucket"
+                )))
+        );
+
+        assertTrue(ex.getMessage().contains("Batch move failed"));
+        assertTrue(ex.getCause().getMessage().contains("Move failed after copy"));
+        assertEquals("source/archive.zip", s3Provider.deletedKeys().getFirst());
+        assertEquals("target/archive.zip", azureProvider.savedKeys().getFirst());
+        assertEquals("target/archive.zip", azureProvider.deletedKeys().getFirst());
+    }
+
+    @Test
     void shouldApplyDefaultListMaxResultsWhenRequestMaxResultsMissing() {
         TrackingListProviderClient provider = new TrackingListProviderClient(StorageProvider.S3);
         DefaultObjectStorageService service = new DefaultObjectStorageService(
@@ -381,7 +411,8 @@ class DefaultObjectStorageServiceTest {
         );
         UploadFileRequest oversizedRequest = new UploadFileRequest(
                 "large.bin",
-                new byte[]{1, 2},
+                new ByteArrayInputStream(new byte[]{1, 2}),
+                2L,
                 "application/octet-stream",
                 Map.of()
         );
@@ -529,13 +560,15 @@ class DefaultObjectStorageServiceTest {
 
         UploadFileRequest firstRequest = new UploadFileRequest(
                 "first.txt",
-                new byte[]{1},
+                new ByteArrayInputStream(new byte[]{1}),
+                1L,
                 "application/octet-stream",
                 Map.of()
         );
         UploadFileRequest secondRequest = new UploadFileRequest(
                 "second.txt",
-                new byte[]{2},
+                new ByteArrayInputStream(new byte[]{2}),
+                1L,
                 "application/octet-stream",
                 Map.of()
         );
@@ -576,7 +609,8 @@ class DefaultObjectStorageServiceTest {
     private UploadFileRequest uploadRequest(String key) {
         return new UploadFileRequest(
                 key,
-                new byte[]{1},
+                new ByteArrayInputStream(new byte[]{1}),
+                1L,
                 "application/octet-stream",
                 Map.of()
         );
@@ -824,7 +858,7 @@ class DefaultObjectStorageServiceTest {
                     provider(),
                     bucket,
                     request.key(),
-                    new byte[]{1, 2, 3},
+                    new ByteArrayInputStream(new byte[]{1, 2, 3}),
                     "application/octet-stream",
                     Map.of("copied-from", request.key()),
                     3L
@@ -852,6 +886,44 @@ class DefaultObjectStorageServiceTest {
 
         private List<String> deletedKeys() {
             return List.copyOf(deletedKeys);
+        }
+    }
+
+    private static final class FailingDeleteCopyMoveProviderClient extends StubProviderClient {
+        private final List<String> requestedGetKeys = new CopyOnWriteArrayList<>();
+        private final List<String> deletedKeys = new CopyOnWriteArrayList<>();
+
+        private FailingDeleteCopyMoveProviderClient(StorageProvider provider) {
+            super(provider);
+        }
+
+        @Override
+        public RetrievedObject getFile(String bucket, GetFileRequest request) {
+            requestedGetKeys.add(request.key());
+            return new RetrievedObject(
+                    provider(),
+                    bucket,
+                    request.key(),
+                    new ByteArrayInputStream(new byte[]{1, 2, 3}),
+                    "application/octet-stream",
+                    Map.of("copied-from", request.key()),
+                    3L
+            );
+        }
+
+        @Override
+        public void deleteFile(String bucket, DeleteFileRequest request) {
+            deletedKeys.add(request.key());
+            throw new ObjectStorageException("Simulated source delete failure");
+        }
+
+        private List<String> deletedKeys() {
+            return List.copyOf(deletedKeys);
+        }
+
+        @SuppressWarnings("unused")
+        private List<String> requestedGetKeys() {
+            return List.copyOf(requestedGetKeys);
         }
     }
 }

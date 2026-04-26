@@ -1,98 +1,36 @@
 package com.example.objectstorage.api.request;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.ByteArrayInputStream;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class UploadFileRequestTest {
     @Test
-    void shouldDefensivelyCopyInputContent() {
-        byte[] original = new byte[]{1, 2, 3};
+    void shouldCreateUploadRequestWithStreamContent() {
         UploadFileRequest request = new UploadFileRequest(
-                "test-key",
-                original,
-                "application/octet-stream",
-                Map.of()
+                "docs/sample.txt",
+                new ByteArrayInputStream(new byte[]{1, 2, 3}),
+                3L,
+                "text/plain",
+                Map.of("owner", "team-a")
         );
 
-        original[0] = 99;
-        assertArrayEquals(new byte[]{1, 2, 3}, request.content());
+        assertEquals("docs/sample.txt", request.key());
+        assertEquals(3L, request.contentLength());
+        assertEquals("text/plain", request.contentType());
+        assertEquals("team-a", request.metadata().get("owner"));
     }
 
     @Test
-    void shouldRejectEmptyPayload() {
-        String key = "test-key";
-        byte[] emptyPayload = new byte[0];
-        String contentType = "application/octet-stream";
-        Map<String, String> metadata = Map.of();
-
-        assertThrows(IllegalArgumentException.class, () -> new UploadFileRequest(
-                key,
-                emptyPayload,
-                contentType,
-                metadata
-        ));
-    }
-
-    @Test
-    void shouldUseContentBasedEqualityAndHashCode() {
-        UploadFileRequest expected = new UploadFileRequest(
-                "key",
-                new byte[]{7, 8, 9},
-                "text/plain",
-                Map.of("owner", "team-a")
-        );
-        UploadFileRequest actual = new UploadFileRequest(
-                "key",
-                new byte[]{7, 8, 9},
-                "text/plain",
-                Map.of("owner", "team-a")
-        );
-
-        assertEquals(expected, actual);
-        assertEquals(expected.hashCode(), actual.hashCode());
-        assertEquals(expected, expected);
-        assertNotEquals("different-type", expected);
-        assertTrue(expected.toString().contains("content=byte[3]"));
-    }
-
-    @Test
-    void shouldReturnFalseWhenAnySignificantFieldDiffers() {
-        UploadFileRequest base = new UploadFileRequest(
-                "key",
-                new byte[]{7, 8, 9},
-                "text/plain",
-                Map.of("owner", "team-a")
-        );
-
-        assertNotEquals(base, new UploadFileRequest(
-                "key-2",
-                new byte[]{7, 8, 9},
-                "text/plain",
-                Map.of("owner", "team-a")
-        ));
-        assertNotEquals(base, new UploadFileRequest(
-                "key",
-                new byte[]{1, 2, 3},
-                "text/plain",
-                Map.of("owner", "team-a")
-        ));
-        assertNotEquals(base, new UploadFileRequest(
-                "key",
-                new byte[]{7, 8, 9},
-                "application/json",
-                Map.of("owner", "team-a")
-        ));
-        assertNotEquals(base, new UploadFileRequest(
-                "key",
-                new byte[]{7, 8, 9},
-                "text/plain",
-                Map.of("owner", "team-b")
-        ));
+    void shouldRejectInvalidStreamUploadRequest() {
+        assertThrows(IllegalArgumentException.class, () ->
+                new UploadFileRequest(" ", new ByteArrayInputStream(new byte[]{1}), 1L, "text/plain", Map.of()));
+        assertThrows(NullPointerException.class, () ->
+                new UploadFileRequest("key", null, 1L, "text/plain", Map.of()));
+        assertThrows(IllegalArgumentException.class, () ->
+                new UploadFileRequest("key", new ByteArrayInputStream(new byte[]{1}), 0L, "text/plain", Map.of()));
     }
 }

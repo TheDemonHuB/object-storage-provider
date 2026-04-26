@@ -3,6 +3,7 @@ package com.example.objectstorage.provider.gcp;
 import com.google.api.gax.paging.Page;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.auth.oauth2.ServiceAccountCredentials;
+import com.google.cloud.ReadChannel;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.BlobInfo;
@@ -23,6 +24,8 @@ import com.example.objectstorage.core.ProviderClient;
 import com.example.objectstorage.core.ProviderClientSupport;
 import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
+import java.io.IOException;
+import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -59,7 +62,7 @@ public final class GcpProviderClient implements ProviderClient {
         String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
         String key = request.key();
-        return operations.executeKeyOperation(LOGGER, "upload", targetBucket, key, () -> {
+        return operations.executeKeyOperation(LOGGER, "upload stream", targetBucket, key, () -> {
             BlobInfo.Builder infoBuilder = BlobInfo.newBuilder(BlobId.of(targetBucket, key));
             if (request.contentType() != null) {
                 infoBuilder.setContentType(request.contentType());
@@ -68,17 +71,21 @@ public final class GcpProviderClient implements ProviderClient {
                 infoBuilder.setMetadata(request.metadata());
             }
 
-            Blob createdBlob = storage.create(infoBuilder.build(), request.content());
-            String version = createdBlob.getGeneration() == null ? null : String.valueOf(createdBlob.getGeneration());
-            StoredObject storedObject = new StoredObject(
-                    provider(),
-                    targetBucket,
-                    key,
-                    createdBlob.getEtag(),
-                    version
-            );
-            LOGGER.info("GCP upload completed: bucket={}, key={}", targetBucket, key);
-            return storedObject;
+            try (var input = request.content()) {
+                Blob createdBlob = storage.createFrom(infoBuilder.build(), input);
+                String version = createdBlob.getGeneration() == null ? null : String.valueOf(createdBlob.getGeneration());
+                StoredObject storedObject = new StoredObject(
+                        provider(),
+                        targetBucket,
+                        key,
+                        createdBlob.getEtag(),
+                        version
+                );
+                LOGGER.info("GCP upload stream completed: bucket={}, key={}, size={}", targetBucket, key, request.contentLength());
+                return storedObject;
+            } catch (IOException ex) {
+                throw new ObjectStorageException("GCP upload stream failed for bucket/key: " + targetBucket + "/" + key, ex);
+            }
         });
     }
 
@@ -87,30 +94,28 @@ public final class GcpProviderClient implements ProviderClient {
         String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
         String key = request.key();
-        return operations.executeKeyOperation(LOGGER, "download", targetBucket, key, () -> {
+        return operations.executeKeyOperation(LOGGER, "download stream", targetBucket, key, () -> {
             Blob blob = storage.get(BlobId.of(targetBucket, key));
             if (blob == null) {
                 throw new ObjectStorageException("GCP object not found: " + targetBucket + "/" + key);
             }
-
-            byte[] bytes = blob.getContent();
             Map<String, String> metadata = blob.getMetadata() == null ? Map.of() : blob.getMetadata();
             Long size = blob.getSize();
-
+            ReadChannel channel = blob.reader();
             RetrievedObject retrievedObject = new RetrievedObject(
                     provider(),
                     targetBucket,
                     key,
-                    bytes,
+                    Channels.newInputStream(channel),
                     blob.getContentType(),
                     metadata,
-                    size == null ? bytes.length : size
+                    size == null ? 0L : size
             );
             LOGGER.info(
-                    "GCP download completed: bucket={}, key={}, size={}",
+                    "GCP download stream opened: bucket={}, key={}, size={}",
                     targetBucket,
                     key,
-                    size == null ? bytes.length : size
+                    size == null ? 0L : size
             );
             return retrievedObject;
         });
