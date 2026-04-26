@@ -67,8 +67,8 @@ public final class ProviderClientSupport {
         );
         try {
 <span class="fc" id="L69">            return supplier.get();</span>
-<span class="nc" id="L70">        } catch (ObjectStorageException ex) {</span>
-<span class="nc" id="L71">            throw ex;</span>
+<span class="fc" id="L70">        } catch (ObjectStorageException ex) {</span>
+<span class="fc" id="L71">            throw ex;</span>
 <span class="fc" id="L72">        } catch (RuntimeException ex) {</span>
 <span class="fc" id="L73">            throw new ObjectStorageException(providerName + &quot; list failed for &quot; + bucketLabel + &quot;: &quot; + bucket, ex);</span>
         }
@@ -81,29 +81,53 @@ public final class ProviderClientSupport {
             String expectedVersionId,
             Supplier&lt;String&gt; currentVersionSupplier
     ) {
-<span class="pc bpc" id="L84" title="1 of 2 branches missed.">        if (expectedVersionId == null) {</span>
-<span class="nc" id="L85">            return;</span>
+<span class="fc" id="L84">        validateExpectedVersion(logger, bucket, key, expectedVersionId, false, currentVersionSupplier);</span>
+<span class="fc" id="L85">    }</span>
+
+    public void validateExpectedVersion(
+            Logger logger,
+            String bucket,
+            String key,
+            String expectedVersionId,
+            boolean versionOverride,
+            Supplier&lt;String&gt; currentVersionSupplier
+    ) {
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (expectedVersionId == null) {</span>
+<span class="fc" id="L96">            return;</span>
         }
         String currentVersionId;
         try {
-<span class="fc" id="L89">            currentVersionId = currentVersionSupplier.get();</span>
-<span class="nc" id="L90">        } catch (ObjectStorageException ex) {</span>
-<span class="nc" id="L91">            throw ex;</span>
-<span class="fc" id="L92">        } catch (RuntimeException ex) {</span>
-<span class="fc" id="L93">            throw new ObjectStorageException(</span>
+<span class="fc" id="L100">            currentVersionId = currentVersionSupplier.get();</span>
+<span class="fc" id="L101">        } catch (ObjectStorageException ex) {</span>
+<span class="fc" id="L102">            throw ex;</span>
+<span class="fc" id="L103">        } catch (RuntimeException ex) {</span>
+<span class="fc" id="L104">            throw new ObjectStorageException(</span>
                     providerName + &quot; version precondition check failed for &quot; + bucketLabel + &quot;/key: &quot; + bucket + &quot;/&quot; + key,
                     ex
             );
-<span class="fc" id="L97">        }</span>
-<span class="fc bfc" id="L98" title="All 2 branches covered.">        if (!expectedVersionId.equals(currentVersionId)) {</span>
-<span class="fc" id="L99">            throw new ObjectStorageException(</span>
-                    providerName + &quot; save version mismatch for &quot; + bucketLabel + &quot;/key &quot;
+<span class="fc" id="L108">        }</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (!expectedVersionId.equals(currentVersionId)) {</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            if (versionOverride) {</span>
+<span class="fc" id="L111">                logger.warn(</span>
+                        &quot;{} save version conflict overridden: {}={}, key={}, expectedVersionId={}, currentVersionId={}&quot;,
+                        providerName,
+                        bucketLabel,
+                        bucket,
+                        key,
+                        expectedVersionId,
+                        currentVersionId
+                );
+<span class="fc" id="L120">                return;</span>
+            }
+<span class="fc" id="L122">            throw new ObjectStorageException(</span>
+                    providerName + &quot; save version already exists for &quot; + bucketLabel + &quot;/key &quot;
                             + bucket + &quot;/&quot; + key
                             + &quot;: expectedVersionId=&quot; + expectedVersionId
                             + &quot;, currentVersionId=&quot; + currentVersionId
+                            + &quot;. Set versionOverride=true to allow saving a new version.&quot;
             );
         }
-<span class="fc" id="L106">        logger.debug(</span>
+<span class="fc" id="L130">        logger.debug(</span>
                 &quot;{} save version precondition passed: {}={}, key={}, versionId={}&quot;,
                 providerName,
                 bucketLabel,
@@ -111,7 +135,7 @@ public final class ProviderClientSupport {
                 key,
                 expectedVersionId
         );
-<span class="fc" id="L114">    }</span>
+<span class="fc" id="L138">    }</span>
 
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

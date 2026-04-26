@@ -42,14 +42,25 @@ public final class GcpProviderClient implements ProviderClient {
 
     private final Storage storage;
     private final ProviderClientSupport operations = new ProviderClientSupport("GCP", BUCKET_FIELD);
+    private final boolean versionOverride;
 
     public GcpProviderClient(GcpStorageConfig config) {
+        this(config, false);
+    }
+
+    public GcpProviderClient(GcpStorageConfig config, boolean versionOverride) {
         Objects.requireNonNull(config, "config must not be null");
         this.storage = createStorageClient(config);
+        this.versionOverride = versionOverride;
     }
 
     GcpProviderClient(Storage storage) {
+        this(storage, false);
+    }
+
+    GcpProviderClient(Storage storage, boolean versionOverride) {
         this.storage = Objects.requireNonNull(storage, "storage must not be null");
+        this.versionOverride = versionOverride;
     }
 
     @Override
@@ -63,7 +74,14 @@ public final class GcpProviderClient implements ProviderClient {
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
         String key = request.filePath();
         return operations.executeKeyOperation(LOGGER, "upload stream", targetBucket, key, () -> {
-            operations.validateExpectedVersion(LOGGER, targetBucket, key, request.versionId(), () -> resolveCurrentVersionId(targetBucket, key));
+            operations.validateExpectedVersion(
+                    LOGGER,
+                    targetBucket,
+                    key,
+                    request.versionId(),
+                    versionOverride,
+                    () -> resolveCurrentVersionId(targetBucket, key)
+            );
             BlobInfo.Builder infoBuilder = BlobInfo.newBuilder(BlobId.of(targetBucket, key));
             if (request.contentType() != null) {
                 infoBuilder.setContentType(request.contentType());

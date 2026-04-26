@@ -109,8 +109,8 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
             int maxConcurrentSaves,
             ServiceSettings settings
 <span class="fc" id="L111">    ) {</span>
-<span class="pc bpc" id="L112" title="2 of 4 branches missed.">        if (providers == null || providers.isEmpty()) {</span>
-<span class="nc" id="L113">            throw new IllegalArgumentException(&quot;providers must not be empty&quot;);</span>
+<span class="pc bpc" id="L112" title="1 of 4 branches missed.">        if (providers == null || providers.isEmpty()) {</span>
+<span class="fc" id="L113">            throw new IllegalArgumentException(&quot;providers must not be empty&quot;);</span>
         }
 <span class="fc bfc" id="L115" title="All 2 branches covered.">        if (maxConcurrentSaves &lt; 0) {</span>
 <span class="fc" id="L116">            throw new IllegalArgumentException(&quot;maxConcurrentSaves must not be negative&quot;);</span>
@@ -125,11 +125,11 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
 <span class="fc bfc" id="L125" title="All 2 branches covered.">        if (settings.maxBatchItems() &lt;= 0) {</span>
 <span class="fc" id="L126">            throw new IllegalArgumentException(&quot;maxBatchItems must be greater than 0&quot;);</span>
         }
-<span class="pc bpc" id="L128" title="1 of 4 branches missed.">        if (settings.defaultListMaxResults() != null &amp;&amp; settings.defaultListMaxResults() &lt;= 0) {</span>
-<span class="nc" id="L129">            throw new IllegalArgumentException(&quot;defaultListMaxResults must be greater than 0&quot;);</span>
+<span class="fc bfc" id="L128" title="All 4 branches covered.">        if (settings.defaultListMaxResults() != null &amp;&amp; settings.defaultListMaxResults() &lt;= 0) {</span>
+<span class="fc" id="L129">            throw new IllegalArgumentException(&quot;defaultListMaxResults must be greater than 0&quot;);</span>
         }
-<span class="pc bpc" id="L131" title="1 of 4 branches missed.">        if (settings.maxFileSizeBytes() != null &amp;&amp; settings.maxFileSizeBytes() &lt;= 0) {</span>
-<span class="nc" id="L132">            throw new IllegalArgumentException(&quot;maxFileSizeBytes must be greater than 0&quot;);</span>
+<span class="fc bfc" id="L131" title="All 4 branches covered.">        if (settings.maxFileSizeBytes() != null &amp;&amp; settings.maxFileSizeBytes() &lt;= 0) {</span>
+<span class="fc" id="L132">            throw new IllegalArgumentException(&quot;maxFileSizeBytes must be greater than 0&quot;);</span>
         }
 <span class="fc" id="L134">        this.defaultProvider = Objects.requireNonNull(defaultProvider, &quot;defaultProvider must not be null&quot;);</span>
 <span class="fc" id="L135">        this.defaultBucket = ValidationUtils.requireNonBlank(defaultBucket, &quot;defaultBucket&quot;);</span>
@@ -355,17 +355,17 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
 <span class="fc" id="L355">                        copiedObject.bucket(),</span>
 <span class="fc" id="L356">                        copiedObject.filePath()</span>
                 );
-<span class="nc" id="L358">            } catch (RuntimeException compensationFailure) {</span>
-<span class="nc" id="L359">                LOGGER.warn(</span>
+<span class="fc" id="L358">            } catch (RuntimeException compensationFailure) {</span>
+<span class="fc" id="L359">                LOGGER.warn(</span>
                         &quot;Move compensation delete failed: targetProvider={}, targetBucket={}, targetKey={}&quot;,
-<span class="nc" id="L361">                        copiedObject.provider(),</span>
-<span class="nc" id="L362">                        copiedObject.bucket(),</span>
-<span class="nc" id="L363">                        copiedObject.filePath(),</span>
+<span class="fc" id="L361">                        copiedObject.provider(),</span>
+<span class="fc" id="L362">                        copiedObject.bucket(),</span>
+<span class="fc" id="L363">                        copiedObject.filePath(),</span>
                         compensationFailure
                 );
-<span class="nc" id="L366">                sourceDeleteFailure.addSuppressed(new ObjectStorageException(</span>
+<span class="fc" id="L366">                sourceDeleteFailure.addSuppressed(new ObjectStorageException(</span>
                         &quot;Move compensation delete failed for &quot;
-<span class="nc" id="L368">                                + copiedObject.provider() + &quot;:&quot; + copiedObject.bucket() + &quot;/&quot; + copiedObject.filePath(),</span>
+<span class="fc" id="L368">                                + copiedObject.provider() + &quot;:&quot; + copiedObject.bucket() + &quot;/&quot; + copiedObject.filePath(),</span>
                         compensationFailure
                 ));
 <span class="fc" id="L371">            }</span>
@@ -567,14 +567,14 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
     }
 
     private void rollbackSavedObjects(List&lt;StoredObject&gt; savedObjects, ObjectStorageException originalFailure) {
-<span class="pc bpc" id="L570" title="1 of 2 branches missed.">        if (savedObjects.isEmpty()) {</span>
-<span class="nc" id="L571">            LOGGER.info(</span>
+<span class="fc bfc" id="L570" title="All 2 branches covered.">        if (savedObjects.isEmpty()) {</span>
+<span class="fc" id="L571">            LOGGER.info(</span>
                     &quot;No saved objects to roll back after save batch failure: provider={}, bucket={}&quot;,
                     defaultProvider,
                     defaultBucket,
                     originalFailure
             );
-<span class="nc" id="L577">            return;</span>
+<span class="fc" id="L577">            return;</span>
         }
 <span class="fc" id="L579">        int savedObjectCount = savedObjects.size();</span>
 <span class="fc" id="L580">        LOGGER.warn(</span>
@@ -1125,9 +1125,9 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
     }
 
     private ObjectStorageException createBatchFailure(String message, RuntimeException cause) {
-<span class="pc bpc" id="L1128" title="1 of 2 branches missed.">        return cause instanceof ObjectStorageException objectStorageException</span>
+<span class="fc bfc" id="L1128" title="All 2 branches covered.">        return cause instanceof ObjectStorageException objectStorageException</span>
 <span class="fc" id="L1129">                ? new ObjectStorageException(message, objectStorageException)</span>
-<span class="nc" id="L1130">                : new ObjectStorageException(message, cause);</span>
+<span class="fc" id="L1130">                : new ObjectStorageException(message, cause);</span>
     }
 
     private ObjectStorageException toObjectStorageException(String message, Throwable cause) {

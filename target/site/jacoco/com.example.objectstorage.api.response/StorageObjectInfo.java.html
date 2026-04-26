@@ -6,8 +6,8 @@ import java.time.Instant;
 public record StorageObjectInfo(String filePath, long size, Instant lastModified, String versionId) {
 <span class="fc" id="L7">    public StorageObjectInfo {</span>
 <span class="fc" id="L8">        filePath = ValidationUtils.requireNonBlank(filePath, &quot;filePath&quot;);</span>
-<span class="pc bpc" id="L9" title="1 of 2 branches missed.">        if (size &lt; 0) {</span>
-<span class="nc" id="L10">            throw new IllegalArgumentException(&quot;size must not be negative&quot;);</span>
+<span class="fc bfc" id="L9" title="All 2 branches covered.">        if (size &lt; 0) {</span>
+<span class="fc" id="L10">            throw new IllegalArgumentException(&quot;size must not be negative&quot;);</span>
         }
 <span class="fc" id="L12">        versionId = ValidationUtils.normalizeToNull(versionId);</span>
 <span class="fc" id="L13">    }</span>

@@ -36,16 +36,27 @@ public final class AzureBlobProviderClient implements ProviderClient {
 
     private final BlobServiceClient blobServiceClient;
     private final ProviderClientSupport operations = new ProviderClientSupport("Azure", "container");
+    private final boolean versionOverride;
 
     public AzureBlobProviderClient(AzureBlobStorageConfig config) {
+        this(config, false);
+    }
+
+    public AzureBlobProviderClient(AzureBlobStorageConfig config, boolean versionOverride) {
         Objects.requireNonNull(config, "config must not be null");
         this.blobServiceClient = new BlobServiceClientBuilder()
                 .connectionString(config.connectionString())
                 .buildClient();
+        this.versionOverride = versionOverride;
     }
 
     AzureBlobProviderClient(BlobServiceClient blobServiceClient) {
+        this(blobServiceClient, false);
+    }
+
+    AzureBlobProviderClient(BlobServiceClient blobServiceClient, boolean versionOverride) {
         this.blobServiceClient = Objects.requireNonNull(blobServiceClient, "blobServiceClient must not be null");
+        this.versionOverride = versionOverride;
     }
 
     @Override
@@ -59,7 +70,14 @@ public final class AzureBlobProviderClient implements ProviderClient {
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
         String key = request.filePath();
         return operations.executeKeyOperation(LOGGER, "upload stream", targetBucket, key, () -> {
-            operations.validateExpectedVersion(LOGGER, targetBucket, key, request.versionId(), () -> resolveCurrentVersionId(targetBucket, key));
+            operations.validateExpectedVersion(
+                    LOGGER,
+                    targetBucket,
+                    key,
+                    request.versionId(),
+                    versionOverride,
+                    () -> resolveCurrentVersionId(targetBucket, key)
+            );
             BlobClient blobClient = resolveBlobClient(targetBucket, key, null);
             try (var input = request.content()) {
                 blobClient.upload(input, request.contentLength(), true);

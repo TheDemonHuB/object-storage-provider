@@ -42,8 +42,13 @@ public final class S3ProviderClient implements ProviderClient {
 
     private final S3Client s3Client;
     private final ProviderClientSupport operations = new ProviderClientSupport("S3", BUCKET_FIELD);
+    private final boolean versionOverride;
 
     public S3ProviderClient(S3StorageConfig config) {
+        this(config, false);
+    }
+
+    public S3ProviderClient(S3StorageConfig config, boolean versionOverride) {
         Objects.requireNonNull(config, "config must not be null");
         S3ClientBuilder builder = S3Client.builder()
                 .region(Region.of(config.region()))
@@ -62,10 +67,16 @@ public final class S3ProviderClient implements ProviderClient {
             builder.endpointOverride(URI.create(config.endpointOverride()));
         }
         this.s3Client = builder.build();
+        this.versionOverride = versionOverride;
     }
 
     S3ProviderClient(S3Client s3Client) {
+        this(s3Client, false);
+    }
+
+    S3ProviderClient(S3Client s3Client, boolean versionOverride) {
         this.s3Client = Objects.requireNonNull(s3Client, "s3Client must not be null");
+        this.versionOverride = versionOverride;
     }
 
     @Override
@@ -79,7 +90,14 @@ public final class S3ProviderClient implements ProviderClient {
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
         String key = request.filePath();
         return operations.executeKeyOperation(LOGGER, "upload stream", targetBucket, key, () -> {
-            operations.validateExpectedVersion(LOGGER, targetBucket, key, request.versionId(), () -> resolveCurrentVersionId(targetBucket, key));
+            operations.validateExpectedVersion(
+                    LOGGER,
+                    targetBucket,
+                    key,
+                    request.versionId(),
+                    versionOverride,
+                    () -> resolveCurrentVersionId(targetBucket, key)
+            );
             PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                     .bucket(targetBucket)
                     .key(key)

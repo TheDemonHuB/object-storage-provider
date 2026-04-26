@@ -42,135 +42,153 @@ public final class S3ProviderClient implements ProviderClient {
 
     private final S3Client s3Client;
 <span class="fc" id="L44">    private final ProviderClientSupport operations = new ProviderClientSupport(&quot;S3&quot;, BUCKET_FIELD);</span>
+    private final boolean versionOverride;
 
-<span class="fc" id="L46">    public S3ProviderClient(S3StorageConfig config) {</span>
-<span class="fc" id="L47">        Objects.requireNonNull(config, &quot;config must not be null&quot;);</span>
-<span class="fc" id="L48">        S3ClientBuilder builder = S3Client.builder()</span>
-<span class="fc" id="L49">                .region(Region.of(config.region()))</span>
-<span class="fc" id="L50">                .credentialsProvider(</span>
-<span class="fc" id="L51">                        StaticCredentialsProvider.create(</span>
-<span class="fc" id="L52">                                AwsBasicCredentials.create(config.accessKey(), config.secretKey())</span>
+    public S3ProviderClient(S3StorageConfig config) {
+<span class="nc" id="L48">        this(config, false);</span>
+<span class="nc" id="L49">    }</span>
+
+<span class="fc" id="L51">    public S3ProviderClient(S3StorageConfig config, boolean versionOverride) {</span>
+<span class="fc" id="L52">        Objects.requireNonNull(config, &quot;config must not be null&quot;);</span>
+<span class="fc" id="L53">        S3ClientBuilder builder = S3Client.builder()</span>
+<span class="fc" id="L54">                .region(Region.of(config.region()))</span>
+<span class="fc" id="L55">                .credentialsProvider(</span>
+<span class="fc" id="L56">                        StaticCredentialsProvider.create(</span>
+<span class="fc" id="L57">                                AwsBasicCredentials.create(config.accessKey(), config.secretKey())</span>
                         )
                 )
-<span class="fc" id="L55">                .serviceConfiguration(</span>
-<span class="fc" id="L56">                        S3Configuration.builder()</span>
-<span class="fc" id="L57">                                .pathStyleAccessEnabled(config.pathStyleAccessEnabled())</span>
-<span class="fc" id="L58">                                .build()</span>
+<span class="fc" id="L60">                .serviceConfiguration(</span>
+<span class="fc" id="L61">                        S3Configuration.builder()</span>
+<span class="fc" id="L62">                                .pathStyleAccessEnabled(config.pathStyleAccessEnabled())</span>
+<span class="fc" id="L63">                                .build()</span>
                 );
 
-<span class="pc bpc" id="L61" title="1 of 2 branches missed.">        if (config.endpointOverride() != null) {</span>
-<span class="fc" id="L62">            builder.endpointOverride(URI.create(config.endpointOverride()));</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        if (config.endpointOverride() != null) {</span>
+<span class="fc" id="L67">            builder.endpointOverride(URI.create(config.endpointOverride()));</span>
         }
-<span class="fc" id="L64">        this.s3Client = builder.build();</span>
-<span class="fc" id="L65">    }</span>
+<span class="fc" id="L69">        this.s3Client = builder.build();</span>
+<span class="fc" id="L70">        this.versionOverride = versionOverride;</span>
+<span class="fc" id="L71">    }</span>
 
-<span class="fc" id="L67">    S3ProviderClient(S3Client s3Client) {</span>
-<span class="fc" id="L68">        this.s3Client = Objects.requireNonNull(s3Client, &quot;s3Client must not be null&quot;);</span>
-<span class="fc" id="L69">    }</span>
+    S3ProviderClient(S3Client s3Client) {
+<span class="fc" id="L74">        this(s3Client, false);</span>
+<span class="fc" id="L75">    }</span>
+
+<span class="fc" id="L77">    S3ProviderClient(S3Client s3Client, boolean versionOverride) {</span>
+<span class="fc" id="L78">        this.s3Client = Objects.requireNonNull(s3Client, &quot;s3Client must not be null&quot;);</span>
+<span class="fc" id="L79">        this.versionOverride = versionOverride;</span>
+<span class="fc" id="L80">    }</span>
 
     @Override
     public StorageProvider provider() {
-<span class="fc" id="L73">        return StorageProvider.S3;</span>
+<span class="fc" id="L84">        return StorageProvider.S3;</span>
     }
 
     @Override
     public StoredObject saveFile(String bucket, UploadFileRequest request) {
-<span class="fc" id="L78">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
-<span class="fc" id="L79">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
-<span class="fc" id="L80">        String key = request.filePath();</span>
-<span class="fc" id="L81">        return operations.executeKeyOperation(LOGGER, &quot;upload stream&quot;, targetBucket, key, () -&gt; {</span>
-<span class="fc" id="L82">            operations.validateExpectedVersion(LOGGER, targetBucket, key, request.versionId(), () -&gt; resolveCurrentVersionId(targetBucket, key));</span>
-<span class="fc" id="L83">            PutObjectRequest putObjectRequest = PutObjectRequest.builder()</span>
-<span class="fc" id="L84">                    .bucket(targetBucket)</span>
-<span class="fc" id="L85">                    .key(key)</span>
-<span class="fc" id="L86">                    .metadata(request.metadata())</span>
-<span class="fc" id="L87">                    .contentType(request.contentType())</span>
-<span class="fc" id="L88">                    .build();</span>
-<span class="fc" id="L89">            try (var input = request.content()) {</span>
-<span class="fc" id="L90">                PutObjectResponse response = s3Client.putObject(</span>
+<span class="fc" id="L89">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="fc" id="L90">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="fc" id="L91">        String key = request.filePath();</span>
+<span class="fc" id="L92">        return operations.executeKeyOperation(LOGGER, &quot;upload stream&quot;, targetBucket, key, () -&gt; {</span>
+<span class="fc" id="L93">            operations.validateExpectedVersion(</span>
+                    LOGGER,
+                    targetBucket,
+                    key,
+<span class="fc" id="L97">                    request.versionId(),</span>
+                    versionOverride,
+<span class="fc" id="L99">                    () -&gt; resolveCurrentVersionId(targetBucket, key)</span>
+            );
+<span class="fc" id="L101">            PutObjectRequest putObjectRequest = PutObjectRequest.builder()</span>
+<span class="fc" id="L102">                    .bucket(targetBucket)</span>
+<span class="fc" id="L103">                    .key(key)</span>
+<span class="fc" id="L104">                    .metadata(request.metadata())</span>
+<span class="fc" id="L105">                    .contentType(request.contentType())</span>
+<span class="fc" id="L106">                    .build();</span>
+<span class="fc" id="L107">            try (var input = request.content()) {</span>
+<span class="fc" id="L108">                PutObjectResponse response = s3Client.putObject(</span>
                         putObjectRequest,
-<span class="fc" id="L92">                        RequestBody.fromInputStream(input, request.contentLength())</span>
+<span class="fc" id="L110">                        RequestBody.fromInputStream(input, request.contentLength())</span>
                 );
-<span class="fc" id="L94">                StoredObject storedObject = new StoredObject(</span>
-<span class="fc" id="L95">                        provider(),</span>
+<span class="fc" id="L112">                StoredObject storedObject = new StoredObject(</span>
+<span class="fc" id="L113">                        provider(),</span>
                         targetBucket,
                         key,
-<span class="fc" id="L98">                        response.eTag(),</span>
-<span class="fc" id="L99">                        response.versionId()</span>
+<span class="fc" id="L116">                        response.eTag(),</span>
+<span class="fc" id="L117">                        response.versionId()</span>
                 );
-<span class="fc" id="L101">                LOGGER.info(&quot;S3 upload stream completed: bucket={}, key={}, size={}&quot;, targetBucket, key, request.contentLength());</span>
-<span class="fc" id="L102">                return storedObject;</span>
-<span class="nc" id="L103">            } catch (IOException ex) {</span>
-<span class="nc" id="L104">                throw new ObjectStorageException(&quot;S3 upload stream failed while reading content for key: &quot; + key, ex);</span>
+<span class="fc" id="L119">                LOGGER.info(&quot;S3 upload stream completed: bucket={}, key={}, size={}&quot;, targetBucket, key, request.contentLength());</span>
+<span class="fc" id="L120">                return storedObject;</span>
+<span class="nc" id="L121">            } catch (IOException ex) {</span>
+<span class="nc" id="L122">                throw new ObjectStorageException(&quot;S3 upload stream failed while reading content for key: &quot; + key, ex);</span>
             }
         });
     }
 
     @Override
     public RetrievedObject getFile(String bucket, GetFileRequest request) {
-<span class="fc" id="L111">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
-<span class="fc" id="L112">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
-<span class="fc" id="L113">        String key = request.filePath();</span>
-<span class="fc" id="L114">        return operations.executeKeyOperation(LOGGER, &quot;download stream&quot;, targetBucket, key, () -&gt; {</span>
-<span class="fc" id="L115">            ResponseInputStream&lt;GetObjectResponse&gt; stream = s3Client.getObject(</span>
-<span class="fc" id="L116">                    buildGetObjectRequest(targetBucket, key, request.versionId())</span>
+<span class="fc" id="L129">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="fc" id="L130">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="fc" id="L131">        String key = request.filePath();</span>
+<span class="fc" id="L132">        return operations.executeKeyOperation(LOGGER, &quot;download stream&quot;, targetBucket, key, () -&gt; {</span>
+<span class="fc" id="L133">            ResponseInputStream&lt;GetObjectResponse&gt; stream = s3Client.getObject(</span>
+<span class="fc" id="L134">                    buildGetObjectRequest(targetBucket, key, request.versionId())</span>
             );
-<span class="fc" id="L118">            GetObjectResponse response = stream.response();</span>
-<span class="fc" id="L119">            Long contentLength = response.contentLength();</span>
-<span class="pc bpc" id="L120" title="1 of 2 branches missed.">            long size = contentLength == null ? 0L : contentLength;</span>
-<span class="fc" id="L121">            RetrievedObject retrievedObject = new RetrievedObject(</span>
-<span class="fc" id="L122">                    provider(),</span>
+<span class="fc" id="L136">            GetObjectResponse response = stream.response();</span>
+<span class="fc" id="L137">            Long contentLength = response.contentLength();</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">            long size = contentLength == null ? 0L : contentLength;</span>
+<span class="fc" id="L139">            RetrievedObject retrievedObject = new RetrievedObject(</span>
+<span class="fc" id="L140">                    provider(),</span>
                     targetBucket,
                     key,
-<span class="fc" id="L125">                    response.versionId(),</span>
+<span class="fc" id="L143">                    response.versionId(),</span>
                     stream,
-<span class="fc" id="L127">                    response.contentType(),</span>
-<span class="fc" id="L128">                    response.metadata(),</span>
+<span class="fc" id="L145">                    response.contentType(),</span>
+<span class="fc" id="L146">                    response.metadata(),</span>
                     size
             );
-<span class="fc" id="L131">            LOGGER.info(&quot;S3 download stream opened: bucket={}, key={}, size={}&quot;, targetBucket, key, size);</span>
-<span class="fc" id="L132">            return retrievedObject;</span>
+<span class="fc" id="L149">            LOGGER.info(&quot;S3 download stream opened: bucket={}, key={}, size={}&quot;, targetBucket, key, size);</span>
+<span class="fc" id="L150">            return retrievedObject;</span>
         });
     }
 
     @Override
     public void deleteFile(String bucket, DeleteFileRequest request) {
-<span class="fc" id="L138">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
-<span class="fc" id="L139">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
-<span class="fc" id="L140">        String key = request.filePath();</span>
-<span class="fc" id="L141">        operations.executeVoidKeyOperation(LOGGER, &quot;delete&quot;, targetBucket, key, () -&gt; {</span>
-<span class="fc" id="L142">            s3Client.deleteObject(</span>
-<span class="fc" id="L143">                    buildDeleteObjectRequest(targetBucket, key, request.versionId())</span>
+<span class="fc" id="L156">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="fc" id="L157">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="fc" id="L158">        String key = request.filePath();</span>
+<span class="fc" id="L159">        operations.executeVoidKeyOperation(LOGGER, &quot;delete&quot;, targetBucket, key, () -&gt; {</span>
+<span class="fc" id="L160">            s3Client.deleteObject(</span>
+<span class="fc" id="L161">                    buildDeleteObjectRequest(targetBucket, key, request.versionId())</span>
             );
-<span class="fc" id="L145">            LOGGER.info(&quot;S3 delete completed: bucket={}, key={}&quot;, targetBucket, key);</span>
-<span class="fc" id="L146">        });</span>
-<span class="fc" id="L147">    }</span>
+<span class="fc" id="L163">            LOGGER.info(&quot;S3 delete completed: bucket={}, key={}&quot;, targetBucket, key);</span>
+<span class="fc" id="L164">        });</span>
+<span class="fc" id="L165">    }</span>
 
     @Override
     public List&lt;StorageObjectInfo&gt; listFiles(String bucket, ListFilesRequest request) {
-<span class="fc" id="L151">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
-<span class="fc" id="L152">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
-<span class="fc" id="L153">        String prefix = request.prefix();</span>
-<span class="fc" id="L154">        Integer maxResults = request.maxResults();</span>
-<span class="fc" id="L155">        return operations.executeListOperation(LOGGER, targetBucket, prefix, maxResults, () -&gt; {</span>
-<span class="fc" id="L156">            List&lt;StorageObjectInfo&gt; objects = new ArrayList&lt;&gt;();</span>
-<span class="fc" id="L157">            String keyMarker = null;</span>
-<span class="fc" id="L158">            String versionIdMarker = null;</span>
+<span class="fc" id="L169">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="fc" id="L170">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="fc" id="L171">        String prefix = request.prefix();</span>
+<span class="fc" id="L172">        Integer maxResults = request.maxResults();</span>
+<span class="fc" id="L173">        return operations.executeListOperation(LOGGER, targetBucket, prefix, maxResults, () -&gt; {</span>
+<span class="fc" id="L174">            List&lt;StorageObjectInfo&gt; objects = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L175">            String keyMarker = null;</span>
+<span class="fc" id="L176">            String versionIdMarker = null;</span>
             boolean truncated;
             do {
-<span class="fc" id="L161">                ListObjectVersionsResponse response = s3Client.listObjectVersions(</span>
-<span class="fc" id="L162">                        buildListVersionsRequest(targetBucket, prefix, maxResults, objects.size(), keyMarker, versionIdMarker)</span>
+<span class="fc" id="L179">                ListObjectVersionsResponse response = s3Client.listObjectVersions(</span>
+<span class="fc" id="L180">                        buildListVersionsRequest(targetBucket, prefix, maxResults, objects.size(), keyMarker, versionIdMarker)</span>
                 );
-<span class="fc" id="L164">                boolean maxReached = appendPageVersions(response.versions(), objects, maxResults);</span>
-<span class="pc bpc" id="L165" title="1 of 2 branches missed.">                if (maxReached) {</span>
-<span class="nc" id="L166">                    return completeList(targetBucket, objects);</span>
+<span class="fc" id="L182">                boolean maxReached = appendPageVersions(response.versions(), objects, maxResults);</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">                if (maxReached) {</span>
+<span class="nc" id="L184">                    return completeList(targetBucket, objects);</span>
                 }
-<span class="fc" id="L168">                truncated = Boolean.TRUE.equals(response.isTruncated());</span>
-<span class="fc" id="L169">                keyMarker = response.nextKeyMarker();</span>
-<span class="fc" id="L170">                versionIdMarker = response.nextVersionIdMarker();</span>
-<span class="fc bfc" id="L171" title="All 2 branches covered.">            } while (truncated);</span>
+<span class="fc" id="L186">                truncated = Boolean.TRUE.equals(response.isTruncated());</span>
+<span class="fc" id="L187">                keyMarker = response.nextKeyMarker();</span>
+<span class="fc" id="L188">                versionIdMarker = response.nextVersionIdMarker();</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            } while (truncated);</span>
 
-<span class="fc" id="L173">            return completeList(targetBucket, objects);</span>
+<span class="fc" id="L191">            return completeList(targetBucket, objects);</span>
         });
     }
 
@@ -182,99 +200,99 @@ public final class S3ProviderClient implements ProviderClient {
             String keyMarker,
             String versionIdMarker
     ) {
-<span class="fc" id="L185">        ListObjectVersionsRequest.Builder listRequest = ListObjectVersionsRequest.builder()</span>
-<span class="fc" id="L186">                .bucket(bucket)</span>
-<span class="fc" id="L187">                .keyMarker(keyMarker)</span>
-<span class="fc" id="L188">                .versionIdMarker(versionIdMarker);</span>
-<span class="fc bfc" id="L189" title="All 2 branches covered.">        if (prefix != null) {</span>
-<span class="fc" id="L190">            listRequest.prefix(prefix);</span>
+<span class="fc" id="L203">        ListObjectVersionsRequest.Builder listRequest = ListObjectVersionsRequest.builder()</span>
+<span class="fc" id="L204">                .bucket(bucket)</span>
+<span class="fc" id="L205">                .keyMarker(keyMarker)</span>
+<span class="fc" id="L206">                .versionIdMarker(versionIdMarker);</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">        if (prefix != null) {</span>
+<span class="fc" id="L208">            listRequest.prefix(prefix);</span>
         }
-<span class="fc bfc" id="L192" title="All 2 branches covered.">        if (maxResults != null) {</span>
-<span class="fc" id="L193">            int remaining = maxResults - collectedCount;</span>
-<span class="fc" id="L194">            int maxKeys = Math.max(1, Math.min(remaining, 1_000));</span>
-<span class="fc" id="L195">            listRequest.maxKeys(maxKeys);</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        if (maxResults != null) {</span>
+<span class="fc" id="L211">            int remaining = maxResults - collectedCount;</span>
+<span class="fc" id="L212">            int maxKeys = Math.max(1, Math.min(remaining, 1_000));</span>
+<span class="fc" id="L213">            listRequest.maxKeys(maxKeys);</span>
         }
-<span class="fc" id="L197">        return listRequest.build();</span>
+<span class="fc" id="L215">        return listRequest.build();</span>
     }
 
     private boolean appendPageVersions(List&lt;ObjectVersion&gt; sourceVersions, List&lt;StorageObjectInfo&gt; collected, Integer maxResults) {
-<span class="fc bfc" id="L201" title="All 2 branches covered.">        for (ObjectVersion version : sourceVersions) {</span>
-<span class="fc" id="L202">            String key = version.key();</span>
-<span class="fc bfc" id="L203" title="All 2 branches covered.">            if (!isDirectoryMarker(key)) {</span>
-<span class="fc" id="L204">                collected.add(new StorageObjectInfo(</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        for (ObjectVersion version : sourceVersions) {</span>
+<span class="fc" id="L220">            String key = version.key();</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">            if (!isDirectoryMarker(key)) {</span>
+<span class="fc" id="L222">                collected.add(new StorageObjectInfo(</span>
                         key,
-<span class="fc" id="L206">                        version.size(),</span>
-<span class="fc" id="L207">                        version.lastModified(),</span>
-<span class="fc" id="L208">                        version.versionId()</span>
+<span class="fc" id="L224">                        version.size(),</span>
+<span class="fc" id="L225">                        version.lastModified(),</span>
+<span class="fc" id="L226">                        version.versionId()</span>
                 ));
-<span class="pc bpc" id="L210" title="1 of 4 branches missed.">                if (maxResults != null &amp;&amp; collected.size() &gt;= maxResults) {</span>
-<span class="nc" id="L211">                    return true;</span>
+<span class="pc bpc" id="L228" title="1 of 4 branches missed.">                if (maxResults != null &amp;&amp; collected.size() &gt;= maxResults) {</span>
+<span class="nc" id="L229">                    return true;</span>
                 }
             }
-<span class="fc" id="L214">        }</span>
-<span class="fc" id="L215">        return false;</span>
+<span class="fc" id="L232">        }</span>
+<span class="fc" id="L233">        return false;</span>
     }
 
     private List&lt;StorageObjectInfo&gt; completeList(String bucket, List&lt;StorageObjectInfo&gt; objects) {
-<span class="fc" id="L219">        List&lt;StorageObjectInfo&gt; storageObjectInfos = List.copyOf(objects);</span>
-<span class="fc" id="L220">        int itemCount = storageObjectInfos.size();</span>
-<span class="fc" id="L221">        LOGGER.info(&quot;S3 list completed: bucket={}, itemCount={}&quot;, bucket, itemCount);</span>
-<span class="fc" id="L222">        return storageObjectInfos;</span>
+<span class="fc" id="L237">        List&lt;StorageObjectInfo&gt; storageObjectInfos = List.copyOf(objects);</span>
+<span class="fc" id="L238">        int itemCount = storageObjectInfos.size();</span>
+<span class="fc" id="L239">        LOGGER.info(&quot;S3 list completed: bucket={}, itemCount={}&quot;, bucket, itemCount);</span>
+<span class="fc" id="L240">        return storageObjectInfos;</span>
     }
 
     @Override
     public void close() {
-<span class="fc" id="L227">        s3Client.close();</span>
-<span class="fc" id="L228">    }</span>
+<span class="fc" id="L245">        s3Client.close();</span>
+<span class="fc" id="L246">    }</span>
 
     private boolean isDirectoryMarker(String key) {
-<span class="pc bpc" id="L231" title="1 of 4 branches missed.">        return key != null &amp;&amp; key.endsWith(&quot;/&quot;);</span>
+<span class="pc bpc" id="L249" title="1 of 4 branches missed.">        return key != null &amp;&amp; key.endsWith(&quot;/&quot;);</span>
     }
 
     private GetObjectRequest buildGetObjectRequest(String bucket, String key, String versionId) {
-<span class="fc" id="L235">        GetObjectRequest.Builder builder = GetObjectRequest.builder()</span>
-<span class="fc" id="L236">                .bucket(bucket)</span>
-<span class="fc" id="L237">                .key(key);</span>
-<span class="fc bfc" id="L238" title="All 2 branches covered.">        if (versionId != null) {</span>
-<span class="fc" id="L239">            builder.versionId(versionId);</span>
+<span class="fc" id="L253">        GetObjectRequest.Builder builder = GetObjectRequest.builder()</span>
+<span class="fc" id="L254">                .bucket(bucket)</span>
+<span class="fc" id="L255">                .key(key);</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        if (versionId != null) {</span>
+<span class="fc" id="L257">            builder.versionId(versionId);</span>
         }
-<span class="fc" id="L241">        return builder.build();</span>
+<span class="fc" id="L259">        return builder.build();</span>
     }
 
     private DeleteObjectRequest buildDeleteObjectRequest(String bucket, String key, String versionId) {
-<span class="fc" id="L245">        DeleteObjectRequest.Builder builder = DeleteObjectRequest.builder()</span>
-<span class="fc" id="L246">                .bucket(bucket)</span>
-<span class="fc" id="L247">                .key(key);</span>
-<span class="fc bfc" id="L248" title="All 2 branches covered.">        if (versionId != null) {</span>
-<span class="fc" id="L249">            builder.versionId(versionId);</span>
+<span class="fc" id="L263">        DeleteObjectRequest.Builder builder = DeleteObjectRequest.builder()</span>
+<span class="fc" id="L264">                .bucket(bucket)</span>
+<span class="fc" id="L265">                .key(key);</span>
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        if (versionId != null) {</span>
+<span class="fc" id="L267">            builder.versionId(versionId);</span>
         }
-<span class="fc" id="L251">        return builder.build();</span>
+<span class="fc" id="L269">        return builder.build();</span>
     }
 
     private String resolveCurrentVersionId(String bucket, String key) {
-<span class="fc" id="L255">        String keyMarker = null;</span>
-<span class="fc" id="L256">        String versionIdMarker = null;</span>
+<span class="fc" id="L273">        String keyMarker = null;</span>
+<span class="fc" id="L274">        String versionIdMarker = null;</span>
         boolean truncated;
         do {
-<span class="fc" id="L259">            ListObjectVersionsResponse response = s3Client.listObjectVersions(</span>
-<span class="fc" id="L260">                    ListObjectVersionsRequest.builder()</span>
-<span class="fc" id="L261">                            .bucket(bucket)</span>
-<span class="fc" id="L262">                            .prefix(key)</span>
-<span class="fc" id="L263">                            .keyMarker(keyMarker)</span>
-<span class="fc" id="L264">                            .versionIdMarker(versionIdMarker)</span>
-<span class="fc" id="L265">                            .maxKeys(1_000)</span>
-<span class="fc" id="L266">                            .build()</span>
+<span class="fc" id="L277">            ListObjectVersionsResponse response = s3Client.listObjectVersions(</span>
+<span class="fc" id="L278">                    ListObjectVersionsRequest.builder()</span>
+<span class="fc" id="L279">                            .bucket(bucket)</span>
+<span class="fc" id="L280">                            .prefix(key)</span>
+<span class="fc" id="L281">                            .keyMarker(keyMarker)</span>
+<span class="fc" id="L282">                            .versionIdMarker(versionIdMarker)</span>
+<span class="fc" id="L283">                            .maxKeys(1_000)</span>
+<span class="fc" id="L284">                            .build()</span>
             );
-<span class="fc bfc" id="L268" title="All 2 branches covered.">            for (ObjectVersion version : response.versions()) {</span>
-<span class="pc bpc" id="L269" title="1 of 2 branches missed.">                if (key.equals(version.key())) {</span>
-<span class="fc" id="L270">                    return version.versionId();</span>
+<span class="fc bfc" id="L286" title="All 2 branches covered.">            for (ObjectVersion version : response.versions()) {</span>
+<span class="pc bpc" id="L287" title="1 of 2 branches missed.">                if (key.equals(version.key())) {</span>
+<span class="fc" id="L288">                    return version.versionId();</span>
                 }
-<span class="nc" id="L272">            }</span>
-<span class="fc" id="L273">            truncated = Boolean.TRUE.equals(response.isTruncated());</span>
-<span class="fc" id="L274">            keyMarker = response.nextKeyMarker();</span>
-<span class="fc" id="L275">            versionIdMarker = response.nextVersionIdMarker();</span>
-<span class="pc bpc" id="L276" title="1 of 2 branches missed.">        } while (truncated);</span>
-<span class="fc" id="L277">        return null;</span>
+<span class="nc" id="L290">            }</span>
+<span class="fc" id="L291">            truncated = Boolean.TRUE.equals(response.isTruncated());</span>
+<span class="fc" id="L292">            keyMarker = response.nextKeyMarker();</span>
+<span class="fc" id="L293">            versionIdMarker = response.nextVersionIdMarker();</span>
+<span class="pc bpc" id="L294" title="1 of 2 branches missed.">        } while (truncated);</span>
+<span class="fc" id="L295">        return null;</span>
     }
 }
 

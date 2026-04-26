@@ -19,6 +19,7 @@ import com.example.objectstorage.api.request.UploadFileRequest;
 import com.example.objectstorage.api.response.RetrievedObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
+import com.example.objectstorage.config.GcpStorageConfig;
 import com.example.objectstorage.core.ObjectStorageException;
 import com.google.api.gax.paging.Page;
 import com.google.cloud.ReadChannel;
@@ -26,13 +27,54 @@ import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.BlobInfo;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.ByteArrayInputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class GcpProviderClientTest {
+    @Test
+    void shouldConstructFromConfigWithDefaultVersionOverride() {
+        GcpProviderClient client = new GcpProviderClient(new GcpStorageConfig("project-1", null, null));
+
+        assertSame(StorageProvider.GCP, client.provider());
+    }
+
+    @Test
+    void shouldFailConstructionWhenCredentialsPathIsInvalid() {
+        assertThrows(
+                ObjectStorageException.class,
+                () -> new GcpProviderClient(new GcpStorageConfig("project-1", "D:/missing/service-account.json", null))
+        );
+    }
+
+    @Test
+    void shouldFailConstructionWhenCredentialsJsonIsInvalid() {
+        assertThrows(
+                ObjectStorageException.class,
+                () -> new GcpProviderClient(new GcpStorageConfig("project-1", null, "{\"invalid\":true}"))
+        );
+    }
+
+    @Test
+    void shouldFailConstructionWhenCredentialsPathHasInvalidJson() throws Exception {
+        Path credentialsFile = Files.createTempFile("gcp-credentials", ".json");
+        try {
+            Files.writeString(credentialsFile, "{\"invalid\":true}");
+            assertThrows(
+                    ObjectStorageException.class,
+                    () -> new GcpProviderClient(new GcpStorageConfig("project-1", credentialsFile.toString(), null))
+            );
+        } finally {
+            Files.deleteIfExists(credentialsFile);
+        }
+    }
+
     @Test
     void shouldSaveFile() throws Exception {
         Storage storage = mock(Storage.class);
@@ -86,6 +128,34 @@ class GcpProviderClientTest {
     }
 
     @Test
+    void shouldSaveWhenExpectedVersionDoesNotMatchAndOverrideIsEnabled() throws Exception {
+        Storage storage = mock(Storage.class);
+        Blob existingBlob = mock(Blob.class);
+        Blob createdBlob = mock(Blob.class);
+        when(storage.get(eq(BlobId.of("bucket", "docs/a.txt")))).thenReturn(existingBlob);
+        when(existingBlob.getGeneration()).thenReturn(2L);
+        when(storage.createFrom(any(BlobInfo.class), any(java.io.InputStream.class))).thenReturn(createdBlob);
+        when(createdBlob.getGeneration()).thenReturn(3L);
+        when(createdBlob.getEtag()).thenReturn("etag");
+
+        GcpProviderClient client = new GcpProviderClient(storage, true);
+
+        StoredObject stored = client.saveFile("bucket", new UploadFileRequest(
+                "docs/a.txt",
+                new ByteArrayInputStream(new byte[]{1, 2}),
+                2L,
+                "text/plain",
+                Map.of(),
+                "1",
+                null,
+                null
+        ));
+
+        assertEquals("3", stored.versionId());
+        verify(storage).createFrom(any(BlobInfo.class), any(java.io.InputStream.class));
+    }
+
+    @Test
     void shouldFailSaveWhenExpectedVersionProvidedButObjectDoesNotExist() throws Exception {
         Storage storage = mock(Storage.class);
         when(storage.get(eq(BlobId.of("bucket", "docs/a.txt")))).thenReturn(null);
@@ -107,6 +177,32 @@ class GcpProviderClientTest {
     }
 
     @Test
+    void shouldSaveWhenObjectDoesNotExistAndOverrideIsEnabled() throws Exception {
+        Storage storage = mock(Storage.class);
+        Blob createdBlob = mock(Blob.class);
+        when(storage.get(eq(BlobId.of("bucket", "docs/a.txt")))).thenReturn(null);
+        when(storage.createFrom(any(BlobInfo.class), any(java.io.InputStream.class))).thenReturn(createdBlob);
+        when(createdBlob.getGeneration()).thenReturn(1L);
+        when(createdBlob.getEtag()).thenReturn("etag");
+
+        GcpProviderClient client = new GcpProviderClient(storage, true);
+
+        StoredObject stored = client.saveFile("bucket", new UploadFileRequest(
+                "docs/a.txt",
+                new ByteArrayInputStream(new byte[]{1}),
+                1L,
+                "text/plain",
+                Map.of(),
+                "1",
+                null,
+                null
+        ));
+
+        assertEquals("1", stored.versionId());
+        verify(storage).createFrom(any(BlobInfo.class), any(java.io.InputStream.class));
+    }
+
+    @Test
     void shouldGetFile() {
         Storage storage = mock(Storage.class);
         Blob blob = mock(Blob.class);
@@ -123,6 +219,19 @@ class GcpProviderClientTest {
         assertEquals(3L, result.size());
         assertEquals("text/plain", result.contentType());
         assertEquals("team", result.metadata().get("owner"));
+    }
+
+    @Test
+    void shouldFailGetWhenObjectIsMissing() {
+        Storage storage = mock(Storage.class);
+        when(storage.get(any(BlobId.class))).thenReturn(null);
+
+        GcpProviderClient client = new GcpProviderClient(storage);
+
+        assertThrows(
+                ObjectStorageException.class,
+                () -> client.getFile("bucket", new GetFileRequest("docs/a.txt", null, null, null))
+        );
     }
 
     @Test
@@ -154,6 +263,17 @@ class GcpProviderClientTest {
     }
 
     @Test
+    void shouldFailVersionedGetWhenVersionIsInvalidNumber() {
+        Storage storage = mock(Storage.class);
+        GcpProviderClient client = new GcpProviderClient(storage);
+
+        assertThrows(
+                ObjectStorageException.class,
+                () -> client.getFile("bucket", new GetFileRequest("docs/a.txt", "bad-version", null, null))
+        );
+    }
+
+    @Test
     void shouldMapUpdateTimeToInstantWhenPresent() {
         Storage storage = mock(Storage.class);
         Blob markerBlob = mock(Blob.class);
@@ -182,6 +302,46 @@ class GcpProviderClientTest {
     }
 
     @Test
+    void shouldPassPrefixToListingOptions() {
+        Storage storage = mock(Storage.class);
+        Blob blob = mock(Blob.class);
+        @SuppressWarnings("unchecked")
+        Page<Blob> page = mock(Page.class);
+        when(blob.getName()).thenReturn("docs/a.txt");
+        when(blob.getSize()).thenReturn(2L);
+        when(page.iterateAll()).thenReturn(List.of(blob));
+        when(storage.list(eq("bucket"), any(Storage.BlobListOption[].class))).thenReturn(page);
+
+        GcpProviderClient client = new GcpProviderClient(storage);
+        List<StorageObjectInfo> listed = client.listFiles("bucket", new ListFilesRequest("docs/", 10));
+
+        assertEquals(1, listed.size());
+    }
+
+    @Test
+    void shouldStopListingWhenMaxResultsReached() {
+        Storage storage = mock(Storage.class);
+        Blob first = mock(Blob.class);
+        Blob second = mock(Blob.class);
+        @SuppressWarnings("unchecked")
+        Page<Blob> page = mock(Page.class);
+        when(first.getName()).thenReturn("docs/a.txt");
+        when(first.getSize()).thenReturn(1L);
+        when(first.getUpdateTimeOffsetDateTime()).thenReturn(null);
+        when(second.getName()).thenReturn("docs/b.txt");
+        when(second.getSize()).thenReturn(2L);
+        when(second.getUpdateTimeOffsetDateTime()).thenReturn(null);
+        when(page.iterateAll()).thenReturn(List.of(first, second));
+        when(storage.list(eq("bucket"), any(Storage.BlobListOption[].class))).thenReturn(page);
+
+        GcpProviderClient client = new GcpProviderClient(storage);
+        List<StorageObjectInfo> listed = client.listFiles("bucket", new ListFilesRequest("docs/", 1));
+
+        assertEquals(1, listed.size());
+        assertEquals("docs/a.txt", listed.getFirst().filePath());
+    }
+
+    @Test
     void shouldHandleMissingUpdateTimeAndSize() {
         Storage storage = mock(Storage.class);
         Blob blob = mock(Blob.class);
@@ -205,9 +365,54 @@ class GcpProviderClientTest {
     }
 
     @Test
+    void shouldWrapUploadIOException() throws Exception {
+        Storage storage = mock(Storage.class);
+        Blob existingBlob = mock(Blob.class);
+        Blob createdBlob = mock(Blob.class);
+        when(storage.get(eq(BlobId.of("bucket", "docs/a.txt")))).thenReturn(existingBlob);
+        when(existingBlob.getGeneration()).thenReturn(1L);
+        when(storage.createFrom(any(BlobInfo.class), any(java.io.InputStream.class))).thenReturn(createdBlob);
+
+        GcpProviderClient client = new GcpProviderClient(storage);
+
+        assertThrows(
+                ObjectStorageException.class,
+                () -> client.saveFile("bucket", new UploadFileRequest(
+                        "docs/a.txt",
+                        new CloseFailingInputStream(),
+                        1L,
+                        "text/plain",
+                        Map.of(),
+                        "1",
+                        null,
+                        null
+                ))
+        );
+    }
+
+    @Test
     void shouldReturnProvider() {
         GcpProviderClient client = new GcpProviderClient(mock(Storage.class));
 
         assertSame(StorageProvider.GCP, client.provider());
+    }
+
+    private static final class FailingInputStream extends InputStream {
+        @Override
+        public int read() throws IOException {
+            throw new IOException("boom");
+        }
+    }
+
+    private static final class CloseFailingInputStream extends InputStream {
+        @Override
+        public int read() {
+            return -1;
+        }
+
+        @Override
+        public void close() throws IOException {
+            throw new IOException("boom");
+        }
     }
 }

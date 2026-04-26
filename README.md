@@ -8,7 +8,7 @@ Provider-agnostic Java library for object storage operations across:
 
 ## Version
 
-Current release line: `2.2.0`
+Current release line: `2.2.1`
 
 ## Maven Dependency
 
@@ -16,7 +16,7 @@ Current release line: `2.2.0`
 <dependency>
     <groupId>com.example.objectstorage</groupId>
     <artifactId>object-storage-library</artifactId>
-    <version>2.2.0</version>
+    <version>2.2.1</version>
 </dependency>
 ```
 
@@ -50,7 +50,10 @@ List<StorageObjectInfo> getVersions(GetVersionsRequest request);
   - legacy convenience/backward-compat constructor overloads are not retained.
 - If version is omitted in `get/delete/copy/move`, the service resolves all versions for that exact `filePath` and runs one operation per version.
 - `saveFiles` supports optional `versionId` precondition:
-  - when provided, provider checks current/latest version for that `filePath` and fails save if it does not match.
+  - when provided, provider checks current/latest version for that `filePath`.
+  - mismatch behavior:
+    - `versionOverride=false` (default): save fails with version conflict.
+    - `versionOverride=true`: save continues and provider creates a new version.
 - `listFiles` returns `StorageObjectInfo(filePath, size, lastModified, versionId)` so callers can target specific versions.
 - `getVersions` returns all versions for an exact `filePath`.
 
@@ -79,10 +82,34 @@ ObjectStorageService service = ObjectStorageServiceBuilder.builder()
         .withMaxConcurrentBatchItems(4)
         .withMaxBatchItems(500)
         .withDefaultListMaxResults(null)
+        .withVersionOverride(false)
         .withAllowedFileExtensions(List.of("pdf", "txt"))
         .withMaxFileSizeBytes(10_000_000L)
         .build();
 ```
+
+## Provider Setup Checklist
+
+### AWS S3
+
+1. Enable versioning on the S3 bucket.
+2. Create IAM user with programmatic access.
+3. Attach permissions for:
+   - `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`
+   - `s3:ListBucket`, `s3:ListBucketVersions`, `s3:GetBucketVersioning`
+4. Configure `S3StorageConfig(region, accessKey, secretKey, endpointOverride, pathStyleAccessEnabled)`.
+
+### Azure Blob
+
+1. Enable blob versioning in the Storage Account (`Data protection`).
+2. Create container.
+3. Use storage account connection string in `AzureBlobStorageConfig(connectionString)`.
+
+### GCP Storage
+
+1. Enable object versioning on bucket.
+2. Create service account and grant storage permissions (object admin for full CRUD).
+3. Use `GcpStorageConfig(projectId, credentialsPath, credentialsJson)` with either path or JSON.
 
 ## Test
 

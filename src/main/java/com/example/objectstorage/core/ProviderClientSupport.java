@@ -81,6 +81,17 @@ public final class ProviderClientSupport {
             String expectedVersionId,
             Supplier<String> currentVersionSupplier
     ) {
+        validateExpectedVersion(logger, bucket, key, expectedVersionId, false, currentVersionSupplier);
+    }
+
+    public void validateExpectedVersion(
+            Logger logger,
+            String bucket,
+            String key,
+            String expectedVersionId,
+            boolean versionOverride,
+            Supplier<String> currentVersionSupplier
+    ) {
         if (expectedVersionId == null) {
             return;
         }
@@ -96,11 +107,24 @@ public final class ProviderClientSupport {
             );
         }
         if (!expectedVersionId.equals(currentVersionId)) {
+            if (versionOverride) {
+                logger.warn(
+                        "{} save version conflict overridden: {}={}, key={}, expectedVersionId={}, currentVersionId={}",
+                        providerName,
+                        bucketLabel,
+                        bucket,
+                        key,
+                        expectedVersionId,
+                        currentVersionId
+                );
+                return;
+            }
             throw new ObjectStorageException(
-                    providerName + " save version mismatch for " + bucketLabel + "/key "
+                    providerName + " save version already exists for " + bucketLabel + "/key "
                             + bucket + "/" + key
                             + ": expectedVersionId=" + expectedVersionId
                             + ", currentVersionId=" + currentVersionId
+                            + ". Set versionOverride=true to allow saving a new version."
             );
         }
         logger.debug(

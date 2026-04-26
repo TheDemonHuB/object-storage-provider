@@ -2,6 +2,7 @@ D:\dev\object storage\object-storage-library\src\test\java\com\example\objectsto
 D:\dev\object storage\object-storage-library\src\test\java\com\example\objectstorage\api\request\RequestRecordsTest.java
 D:\dev\object storage\object-storage-library\src\test\java\com\example\objectstorage\api\request\UploadFileRequestTest.java
 D:\dev\object storage\object-storage-library\src\test\java\com\example\objectstorage\api\response\RetrievedObjectTest.java
+D:\dev\object storage\object-storage-library\src\test\java\com\example\objectstorage\api\response\StorageObjectInfoTest.java
 D:\dev\object storage\object-storage-library\src\test\java\com\example\objectstorage\api\response\StoredObjectTest.java
 D:\dev\object storage\object-storage-library\src\test\java\com\example\objectstorage\config\ObjectStorageServiceBuilderTest.java
 D:\dev\object storage\object-storage-library\src\test\java\com\example\objectstorage\config\StorageConfigRecordsTest.java

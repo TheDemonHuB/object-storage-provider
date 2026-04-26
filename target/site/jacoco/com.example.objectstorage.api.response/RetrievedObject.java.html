@@ -28,15 +28,15 @@ public record RetrievedObject(
 <span class="fc" id="L28">            throw new IllegalArgumentException(&quot;size must not be negative&quot;);</span>
         }
 <span class="fc" id="L30">        contentType = ValidationUtils.normalizeToNull(contentType);</span>
-<span class="pc bpc" id="L31" title="1 of 2 branches missed.">        metadata = metadata == null ? Map.of() : Map.copyOf(metadata);</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        metadata = metadata == null ? Map.of() : Map.copyOf(metadata);</span>
 <span class="fc" id="L32">    }</span>
 
     @Override
     public void close() {
         try {
 <span class="fc" id="L37">            content.close();</span>
-<span class="nc" id="L38">        } catch (IOException ex) {</span>
-<span class="nc" id="L39">            throw new UncheckedIOException(&quot;Failed to close content stream&quot;, ex);</span>
+<span class="fc" id="L38">        } catch (IOException ex) {</span>
+<span class="fc" id="L39">            throw new UncheckedIOException(&quot;Failed to close content stream&quot;, ex);</span>
 <span class="fc" id="L40">        }</span>
 <span class="fc" id="L41">    }</span>
 

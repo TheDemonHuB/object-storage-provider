@@ -84,6 +84,34 @@ class S3ProviderClientTest {
     }
 
     @Test
+    void shouldSaveWhenExpectedVersionDoesNotMatchAndOverrideIsEnabled() {
+        S3Client s3Client = mock(S3Client.class);
+        when(s3Client.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(
+                ListObjectVersionsResponse.builder()
+                        .versions(ObjectVersion.builder().key("customer/a.txt").versionId("v2").build())
+                        .isTruncated(false)
+                        .build()
+        );
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().eTag("etag").versionId("v3").build());
+
+        S3ProviderClient client = new S3ProviderClient(s3Client, true);
+        StoredObject result = client.saveFile("docs", new UploadFileRequest(
+                "customer/a.txt",
+                new ByteArrayInputStream(new byte[]{1, 2, 3}),
+                3L,
+                "text/plain",
+                Map.of(),
+                "v1",
+                null,
+                null
+        ));
+
+        assertEquals("v3", result.versionId());
+        verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+    @Test
     void shouldGetFile() {
         S3Client s3Client = mock(S3Client.class);
         GetObjectResponse response = GetObjectResponse.builder()
@@ -156,6 +184,34 @@ class S3ProviderClientTest {
                 ))
         );
         verify(s3Client, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+    @Test
+    void shouldSaveWhenCurrentVersionIsMissingAndOverrideIsEnabled() {
+        S3Client s3Client = mock(S3Client.class);
+        when(s3Client.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(
+                ListObjectVersionsResponse.builder()
+                        .versions(List.of())
+                        .isTruncated(false)
+                        .build()
+        );
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().eTag("etag").versionId("v1").build());
+        S3ProviderClient client = new S3ProviderClient(s3Client, true);
+
+        StoredObject result = client.saveFile("docs", new UploadFileRequest(
+                "customer/a.txt",
+                new ByteArrayInputStream(new byte[]{1}),
+                1L,
+                "text/plain",
+                Map.of(),
+                "v1",
+                null,
+                null
+        ));
+
+        assertEquals("v1", result.versionId());
+        verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
     }
 
     @Test

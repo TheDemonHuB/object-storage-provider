@@ -1,6 +1,8 @@
 package com.example.objectstorage.api.request;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.ByteArrayInputStream;
@@ -26,6 +28,25 @@ class UploadFileRequestTest {
         assertEquals("text/plain", request.contentType());
         assertEquals("team-a", request.metadata().get("owner"));
         assertEquals("v1", request.versionId());
+    }
+
+    @Test
+    void shouldNormalizeNullableMetadataAndBucket() {
+        UploadFileRequest request = new UploadFileRequest(
+                "docs/sample.txt",
+                new ByteArrayInputStream(new byte[]{1}),
+                1L,
+                " ",
+                null,
+                " ",
+                null,
+                " "
+        );
+
+        assertTrue(request.metadata().isEmpty());
+        assertNull(request.contentType());
+        assertNull(request.versionId());
+        assertNull(request.bucket());
     }
 
     @Test

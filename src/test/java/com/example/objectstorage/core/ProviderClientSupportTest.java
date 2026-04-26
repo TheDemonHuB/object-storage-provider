@@ -92,6 +92,21 @@ class ProviderClientSupportTest {
     }
 
     @Test
+    void shouldRethrowObjectStorageExceptionForListOperation() {
+        ProviderClientSupport support = new ProviderClientSupport("Azure", "container");
+        ObjectStorageException expected = new ObjectStorageException("boom");
+
+        ObjectStorageException thrown = assertThrows(
+                ObjectStorageException.class,
+                () -> support.executeListOperation(LOGGER, "docs", null, null, () -> {
+                    throw expected;
+                })
+        );
+
+        assertSame(expected, thrown);
+    }
+
+    @Test
     void shouldPassVersionPreconditionWhenExpectedMatchesCurrent() {
         ProviderClientSupport support = new ProviderClientSupport("S3", "bucket");
 
@@ -105,6 +120,21 @@ class ProviderClientSupportTest {
     }
 
     @Test
+    void shouldSkipVersionValidationWhenExpectedVersionIsNull() {
+        ProviderClientSupport support = new ProviderClientSupport("S3", "bucket");
+
+        support.validateExpectedVersion(
+                LOGGER,
+                "docs",
+                "a.txt",
+                null,
+                () -> {
+                    throw new AssertionError("supplier should not be called when expectedVersionId is null");
+                }
+        );
+    }
+
+    @Test
     void shouldFailVersionPreconditionWhenExpectedDoesNotMatchCurrent() {
         ProviderClientSupport support = new ProviderClientSupport("S3", "bucket");
 
@@ -114,8 +144,37 @@ class ProviderClientSupportTest {
         );
 
         assertEquals(
-                "S3 save version mismatch for bucket/key docs/a.txt: expectedVersionId=v1, currentVersionId=v2",
+                "S3 save version already exists for bucket/key docs/a.txt: expectedVersionId=v1, currentVersionId=v2. "
+                        + "Set versionOverride=true to allow saving a new version.",
                 thrown.getMessage()
+        );
+    }
+
+    @Test
+    void shouldPassVersionPreconditionWhenOverrideEnabledAndVersionDoesNotMatch() {
+        ProviderClientSupport support = new ProviderClientSupport("S3", "bucket");
+
+        support.validateExpectedVersion(
+                LOGGER,
+                "docs",
+                "a.txt",
+                "v1",
+                true,
+                () -> "v2"
+        );
+    }
+
+    @Test
+    void shouldPassVersionPreconditionWhenOverrideEnabledAndCurrentVersionMissing() {
+        ProviderClientSupport support = new ProviderClientSupport("S3", "bucket");
+
+        support.validateExpectedVersion(
+                LOGGER,
+                "docs",
+                "a.txt",
+                "v1",
+                true,
+                () -> null
         );
     }
 
@@ -131,5 +190,20 @@ class ProviderClientSupportTest {
         );
 
         assertEquals("S3 version precondition check failed for bucket/key: docs/a.txt", thrown.getMessage());
+    }
+
+    @Test
+    void shouldRethrowObjectStorageExceptionFromVersionSupplier() {
+        ProviderClientSupport support = new ProviderClientSupport("S3", "bucket");
+        ObjectStorageException expected = new ObjectStorageException("boom");
+
+        ObjectStorageException thrown = assertThrows(
+                ObjectStorageException.class,
+                () -> support.validateExpectedVersion(LOGGER, "docs", "a.txt", "v1", () -> {
+                    throw expected;
+                })
+        );
+
+        assertSame(expected, thrown);
     }
 }

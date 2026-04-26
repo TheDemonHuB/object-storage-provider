@@ -545,6 +545,11 @@ class DefaultObjectStorageServiceTest {    private static final String TEST_BASE
     }
 
     @Test
+    void shouldFailWhenProvidersMapIsEmpty() {
+        assertThrows(IllegalArgumentException.class, this::createServiceWithEmptyProviders);
+    }
+
+    @Test
     void shouldRejectNegativeConcurrentSaveLimit() {
         assertThrows(IllegalArgumentException.class, this::createServiceWithNegativeConcurrentLimit);
     }
@@ -554,6 +559,8 @@ class DefaultObjectStorageServiceTest {    private static final String TEST_BASE
         assertThrows(IllegalArgumentException.class, this::createServiceWithZeroBatchSize);
         assertThrows(IllegalArgumentException.class, this::createServiceWithZeroConcurrentBatchItems);
         assertThrows(IllegalArgumentException.class, this::createServiceWithZeroMaxBatchItems);
+        assertThrows(IllegalArgumentException.class, this::createServiceWithInvalidDefaultListMaxResults);
+        assertThrows(IllegalArgumentException.class, this::createServiceWithInvalidMaxFileSizeBytes);
     }
 
     @Test
@@ -621,6 +628,49 @@ class DefaultObjectStorageServiceTest {    private static final String TEST_BASE
         }
     }
 
+    @Test
+    void shouldWrapNonObjectStorageRuntimeFailureOnSave() {
+        RuntimeFailingSaveProviderClient provider = new RuntimeFailingSaveProviderClient(StorageProvider.S3);
+        DefaultObjectStorageService service = createService(provider, 3, 1, 5);
+
+        ObjectStorageException ex = assertThrows(
+                ObjectStorageException.class,
+                () -> service.saveFiles(List.of(uploadRequest("first.txt")))
+        );
+
+        assertTrue(ex.getMessage().contains("Batch save failed"));
+        assertEquals(0, provider.deletedKeys().size());
+    }
+
+    @Test
+    void shouldAttachSuppressedCompensationFailureWhenMoveCompensationDeleteFails() {
+        FailingDeleteCopyMoveProviderClient sourceProvider = new FailingDeleteCopyMoveProviderClient(StorageProvider.S3);
+        FailingCompensationDeleteProviderClient targetProvider = new FailingCompensationDeleteProviderClient(StorageProvider.AZURE);
+        DefaultObjectStorageService service = new DefaultObjectStorageService(
+                Map.of(StorageProvider.S3, sourceProvider, StorageProvider.AZURE, targetProvider),
+                StorageProvider.S3,
+                TEST_BUCKET
+        );
+
+        ObjectStorageException ex = assertThrows(
+                ObjectStorageException.class,
+                () -> service.moveFiles(List.of(new MoveFileRequest(
+                        "source/archive.zip",
+                        null,
+                        "target/archive.zip",
+                        StorageProvider.S3,
+                        "source-bucket",
+                        StorageProvider.AZURE,
+                        "target-bucket"
+                )))
+        );
+
+        assertTrue(ex.getMessage().contains("Batch move failed"));
+        Throwable cause = ex.getCause();
+        assertTrue(cause instanceof ObjectStorageException);
+        assertTrue(cause.getMessage().contains("source delete failed"));
+    }
+
     private UploadFileRequest uploadRequest(String key) {
         return new UploadFileRequest(
                 key,
@@ -676,6 +726,14 @@ class DefaultObjectStorageServiceTest {    private static final String TEST_BASE
         );
     }
 
+    private DefaultObjectStorageService createServiceWithEmptyProviders() {
+        return new DefaultObjectStorageService(
+                Map.of(),
+                StorageProvider.S3,
+                TEST_BUCKET
+        );
+    }
+
     private DefaultObjectStorageService createServiceWithZeroBatchSize() {
         return new DefaultObjectStorageService(
                 Map.of(StorageProvider.S3, new StubProviderClient(StorageProvider.S3)),
@@ -703,6 +761,26 @@ class DefaultObjectStorageServiceTest {    private static final String TEST_BASE
                 TEST_BUCKET,
                 0,
                 new DefaultObjectStorageService.ServiceSettings(100, 1, 0, null, null, null, null)
+        );
+    }
+
+    private DefaultObjectStorageService createServiceWithInvalidDefaultListMaxResults() {
+        return new DefaultObjectStorageService(
+                Map.of(StorageProvider.S3, new StubProviderClient(StorageProvider.S3)),
+                StorageProvider.S3,
+                TEST_BUCKET,
+                0,
+                new DefaultObjectStorageService.ServiceSettings(100, 1, 500, 0, null, null, null)
+        );
+    }
+
+    private DefaultObjectStorageService createServiceWithInvalidMaxFileSizeBytes() {
+        return new DefaultObjectStorageService(
+                Map.of(StorageProvider.S3, new StubProviderClient(StorageProvider.S3)),
+                StorageProvider.S3,
+                TEST_BUCKET,
+                0,
+                new DefaultObjectStorageService.ServiceSettings(100, 1, 500, null, null, 0L, null)
         );
     }
 
@@ -942,6 +1020,58 @@ class DefaultObjectStorageServiceTest {    private static final String TEST_BASE
         @SuppressWarnings("unused")
         private List<String> requestedGetKeys() {
             return List.copyOf(requestedGetKeys);
+        }
+    }
+
+    private static final class FailingCompensationDeleteProviderClient extends StubProviderClient {
+        private FailingCompensationDeleteProviderClient(StorageProvider provider) {
+            super(provider);
+        }
+
+        @Override
+        public RetrievedObject getFile(String bucket, GetFileRequest request) {
+            return new RetrievedObject(
+                    provider(),
+                    bucket,
+                    request.filePath(),
+                    null,
+                    new ByteArrayInputStream(new byte[]{1}),
+                    "application/octet-stream",
+                    Map.of(),
+                    1L
+            );
+        }
+
+        @Override
+        public StoredObject saveFile(String bucket, UploadFileRequest request) {
+            return new StoredObject(provider(), bucket, request.filePath(), "etag-copy", null);
+        }
+
+        @Override
+        public void deleteFile(String bucket, DeleteFileRequest request) {
+            throw new ObjectStorageException("Simulated compensation delete failure");
+        }
+    }
+
+    private static final class RuntimeFailingSaveProviderClient extends StubProviderClient {
+        private final List<String> deletedKeys = new CopyOnWriteArrayList<>();
+
+        private RuntimeFailingSaveProviderClient(StorageProvider provider) {
+            super(provider);
+        }
+
+        @Override
+        public StoredObject saveFile(String bucket, UploadFileRequest request) {
+            throw new IllegalStateException("Simulated runtime failure");
+        }
+
+        @Override
+        public void deleteFile(String bucket, DeleteFileRequest request) {
+            deletedKeys.add(request.filePath());
+        }
+
+        private List<String> deletedKeys() {
+            return List.copyOf(deletedKeys);
         }
     }
 

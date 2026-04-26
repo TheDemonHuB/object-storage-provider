@@ -33,6 +33,7 @@ public final class ObjectStorageServiceBuilder {
     private Set<String> allowedFileExtensions;
     private Long maxFileSizeBytes;
     private String basePath;
+    private boolean versionOverride;
     private StorageProvider provider;
     private String bucket;
 
@@ -142,6 +143,11 @@ public final class ObjectStorageServiceBuilder {
         return this;
     }
 
+    public ObjectStorageServiceBuilder withVersionOverride(boolean versionOverride) {
+        this.versionOverride = versionOverride;
+        return this;
+    }
+
     public ObjectStorageServiceBuilder withProvider(StorageProvider provider) {
         this.provider = Objects.requireNonNull(provider, "provider must not be null");
         return this;
@@ -156,13 +162,13 @@ public final class ObjectStorageServiceBuilder {
         Map<StorageProvider, ProviderClient> providers = new EnumMap<>(StorageProvider.class);
 
         if (s3StorageConfig != null) {
-            providers.put(StorageProvider.S3, new S3ProviderClient(s3StorageConfig));
+            providers.put(StorageProvider.S3, new S3ProviderClient(s3StorageConfig, versionOverride));
         }
         if (azureBlobStorageConfig != null) {
-            providers.put(StorageProvider.AZURE, new AzureBlobProviderClient(azureBlobStorageConfig));
+            providers.put(StorageProvider.AZURE, new AzureBlobProviderClient(azureBlobStorageConfig, versionOverride));
         }
         if (gcpStorageConfig != null) {
-            providers.put(StorageProvider.GCP, new GcpProviderClient(gcpStorageConfig));
+            providers.put(StorageProvider.GCP, new GcpProviderClient(gcpStorageConfig, versionOverride));
         }
         if (provider == null) {
             throw new IllegalStateException("provider must be configured via withProvider(...)");

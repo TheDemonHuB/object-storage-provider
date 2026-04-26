@@ -60,9 +60,34 @@ class ObjectStorageServiceBuilderTest {
         assertThrows(IllegalArgumentException.class, this::createBuilderWithInvalidBatchSize);
         assertThrows(IllegalArgumentException.class, this::createBuilderWithInvalidConcurrentBatchItems);
         assertThrows(IllegalArgumentException.class, this::createBuilderWithInvalidMaxBatchItems);
+        assertThrows(IllegalArgumentException.class, this::createBuilderWithInvalidMaxConcurrentSaves);
         assertThrows(IllegalArgumentException.class, this::createBuilderWithInvalidDefaultListMaxResults);
         assertThrows(IllegalArgumentException.class, this::createBuilderWithInvalidAllowedFileExtensions);
+        assertThrows(IllegalArgumentException.class, this::createBuilderWithInvalidAllowedFileExtensionsEmpty);
+        assertThrows(IllegalArgumentException.class, this::createBuilderWithInvalidAllowedFileExtensionsDotOnly);
         assertThrows(IllegalArgumentException.class, this::createBuilderWithInvalidMaxFileSizeBytes);
+    }
+
+    @Test
+    void shouldBuildServiceWhenAzureProviderIsConfigured() {
+        ObjectStorageService service = ObjectStorageServiceBuilder.builder()
+                .withAzure(new AzureBlobStorageConfig("UseDevelopmentStorage=true"))
+                .withProvider(StorageProvider.AZURE)
+                .withBucket("container-a")
+                .build();
+
+        assertDoesNotThrow(service::close);
+    }
+
+    @Test
+    void shouldBuildServiceWhenGcpProviderIsConfigured() {
+        ObjectStorageService service = ObjectStorageServiceBuilder.builder()
+                .withGcp(new GcpStorageConfig(null, null, null))
+                .withProvider(StorageProvider.GCP)
+                .withBucket("bucket-a")
+                .build();
+
+        assertDoesNotThrow(service::close);
     }
 
     @Test
@@ -78,6 +103,7 @@ class ObjectStorageServiceBuilderTest {
                 .withMaxBatchItems(250)
                 .withMaxConcurrentSaves(2)
                 .withDefaultListMaxResults(50)
+                .withVersionOverride(true)
                 .withAllowedFileExtensions(List.of(".PDF", " txt "))
                 .withMaxFileSizeBytes(10_000L)
                 .build();
@@ -128,8 +154,20 @@ class ObjectStorageServiceBuilderTest {
         return ObjectStorageServiceBuilder.builder().withDefaultListMaxResults(0);
     }
 
+    private ObjectStorageServiceBuilder createBuilderWithInvalidMaxConcurrentSaves() {
+        return ObjectStorageServiceBuilder.builder().withMaxConcurrentSaves(-1);
+    }
+
     private ObjectStorageServiceBuilder createBuilderWithInvalidAllowedFileExtensions() {
         return ObjectStorageServiceBuilder.builder().withAllowedFileExtensions(java.util.List.of(" "));
+    }
+
+    private ObjectStorageServiceBuilder createBuilderWithInvalidAllowedFileExtensionsEmpty() {
+        return ObjectStorageServiceBuilder.builder().withAllowedFileExtensions(java.util.List.of());
+    }
+
+    private ObjectStorageServiceBuilder createBuilderWithInvalidAllowedFileExtensionsDotOnly() {
+        return ObjectStorageServiceBuilder.builder().withAllowedFileExtensions(java.util.List.of("."));
     }
 
     private ObjectStorageServiceBuilder createBuilderWithInvalidMaxFileSizeBytes() {

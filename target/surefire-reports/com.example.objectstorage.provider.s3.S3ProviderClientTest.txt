@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.example.objectstorage.provider.s3.S3ProviderClientTest
 -------------------------------------------------------------------------------
-Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.150 s -- in com.example.objectstorage.provider.s3.S3ProviderClientTest
+Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.993 s -- in com.example.objectstorage.provider.s3.S3ProviderClientTest

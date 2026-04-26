@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -27,6 +28,7 @@ import com.example.objectstorage.api.request.UploadFileRequest;
 import com.example.objectstorage.api.response.RetrievedObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
+import com.example.objectstorage.config.AzureBlobStorageConfig;
 import com.example.objectstorage.core.ObjectStorageException;
 import java.io.ByteArrayInputStream;
 import java.time.OffsetDateTime;
@@ -35,6 +37,15 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class AzureBlobProviderClientTest {
+    @Test
+    void shouldConstructFromConfigWithDefaultVersionOverride() {
+        AzureBlobProviderClient client = new AzureBlobProviderClient(
+                new AzureBlobStorageConfig("UseDevelopmentStorage=true")
+        );
+
+        assertSame(StorageProvider.AZURE, client.provider());
+    }
+
     @Test
     void shouldSaveFile() {
         BlobServiceClient serviceClient = mock(BlobServiceClient.class);
@@ -82,6 +93,52 @@ class AzureBlobProviderClientTest {
                 ))
         );
         verify(blobClient, never()).upload(any(), eq(1L), eq(true));
+    }
+
+    @Test
+    void shouldSaveWhenExpectedVersionDoesNotMatchAndOverrideIsEnabled() {
+        BlobServiceClient serviceClient = mock(BlobServiceClient.class);
+        BlobContainerClient containerClient = mock(BlobContainerClient.class);
+        BlobClient blobClient = mock(BlobClient.class);
+        BlobProperties properties = mock(BlobProperties.class);
+        when(serviceClient.getBlobContainerClient("docs")).thenReturn(containerClient);
+        when(containerClient.getBlobClient("customer/a.txt")).thenReturn(blobClient);
+        when(blobClient.getProperties()).thenReturn(properties);
+        when(properties.getVersionId()).thenReturn("v2", "v3");
+        when(properties.getETag()).thenReturn("etag");
+
+        AzureBlobProviderClient client = new AzureBlobProviderClient(serviceClient, true);
+
+        StoredObject result = client.saveFile("docs", new UploadFileRequest(
+                "customer/a.txt",
+                new ByteArrayInputStream(new byte[]{1}),
+                1L,
+                "text/plain",
+                Map.of(),
+                "v1",
+                null,
+                null
+        ));
+
+        assertEquals("v3", result.versionId());
+        verify(blobClient).upload(any(), eq(1L), eq(true));
+    }
+
+    @Test
+    void shouldWrapUploadFailure() {
+        BlobServiceClient serviceClient = mock(BlobServiceClient.class);
+        BlobContainerClient containerClient = mock(BlobContainerClient.class);
+        BlobClient blobClient = mock(BlobClient.class);
+        BlobProperties properties = mock(BlobProperties.class);
+        when(serviceClient.getBlobContainerClient("docs")).thenReturn(containerClient);
+        when(containerClient.getBlobClient("customer/a.txt")).thenReturn(blobClient);
+        when(blobClient.getProperties()).thenReturn(properties);
+        when(properties.getVersionId()).thenReturn("v1");
+        doThrow(new IllegalStateException("boom")).when(blobClient).upload(any(), eq(3L), eq(true));
+
+        AzureBlobProviderClient client = new AzureBlobProviderClient(serviceClient);
+
+        assertThrows(ObjectStorageException.class, () -> client.saveFile("docs", uploadRequest()));
     }
 
     @Test
@@ -170,6 +227,37 @@ class AzureBlobProviderClientTest {
     }
 
     @Test
+    void shouldSaveWhenBlobDoesNotExistAndOverrideIsEnabled() {
+        BlobServiceClient serviceClient = mock(BlobServiceClient.class);
+        BlobContainerClient containerClient = mock(BlobContainerClient.class);
+        BlobClient blobClient = mock(BlobClient.class);
+        BlobStorageException notFound = mock(BlobStorageException.class);
+        BlobProperties properties = mock(BlobProperties.class);
+        when(notFound.getStatusCode()).thenReturn(404);
+        when(serviceClient.getBlobContainerClient("docs")).thenReturn(containerClient);
+        when(containerClient.getBlobClient("customer/a.txt")).thenReturn(blobClient);
+        when(blobClient.getProperties()).thenThrow(notFound).thenReturn(properties);
+        when(properties.getETag()).thenReturn("etag");
+        when(properties.getVersionId()).thenReturn("v1");
+
+        AzureBlobProviderClient client = new AzureBlobProviderClient(serviceClient, true);
+
+        StoredObject result = client.saveFile("docs", new UploadFileRequest(
+                "customer/a.txt",
+                new ByteArrayInputStream(new byte[]{1}),
+                1L,
+                "text/plain",
+                Map.of(),
+                "v1",
+                null,
+                null
+        ));
+
+        assertEquals("v1", result.versionId());
+        verify(blobClient).upload(any(), eq(1L), eq(true));
+    }
+
+    @Test
     void shouldListFiles() {
         BlobServiceClient serviceClient = mock(BlobServiceClient.class);
         BlobContainerClient containerClient = mock(BlobContainerClient.class);
@@ -197,6 +285,64 @@ class AzureBlobProviderClientTest {
         assertEquals(1, result.size());
         assertEquals("customer/a.txt", result.getFirst().filePath());
         assertEquals(5L, result.getFirst().size());
+    }
+
+    @Test
+    void shouldStopListingWhenMaxResultsReached() {
+        BlobServiceClient serviceClient = mock(BlobServiceClient.class);
+        BlobContainerClient containerClient = mock(BlobContainerClient.class);
+        BlobItem first = mock(BlobItem.class);
+        BlobItem second = mock(BlobItem.class);
+        BlobItemProperties firstProperties = mock(BlobItemProperties.class);
+        BlobItemProperties secondProperties = mock(BlobItemProperties.class);
+        @SuppressWarnings("unchecked")
+        PagedIterable<BlobItem> pagedIterable = mock(PagedIterable.class);
+
+        when(serviceClient.getBlobContainerClient("docs")).thenReturn(containerClient);
+        when(containerClient.listBlobs(any(), eq(null))).thenReturn(pagedIterable);
+        when(pagedIterable.iterator()).thenReturn(List.of(first, second).iterator());
+        when(first.getName()).thenReturn("customer/a.txt");
+        when(first.getProperties()).thenReturn(firstProperties);
+        when(firstProperties.getContentLength()).thenReturn(5L);
+        when(firstProperties.getLastModified()).thenReturn(OffsetDateTime.parse("2026-01-01T00:00:00Z"));
+        when(second.getName()).thenReturn("customer/b.txt");
+        when(second.getProperties()).thenReturn(secondProperties);
+        when(secondProperties.getContentLength()).thenReturn(6L);
+        when(secondProperties.getLastModified()).thenReturn(OffsetDateTime.parse("2026-01-02T00:00:00Z"));
+
+        AzureBlobProviderClient client = new AzureBlobProviderClient(serviceClient);
+        List<StorageObjectInfo> result = client.listFiles("docs", new ListFilesRequest("customer/", 1));
+
+        assertEquals(1, result.size());
+        assertEquals("customer/a.txt", result.getFirst().filePath());
+    }
+
+    @Test
+    void shouldWrapVersionCheckFailureWhenCurrentVersionLookupThrows() {
+        BlobServiceClient serviceClient = mock(BlobServiceClient.class);
+        BlobContainerClient containerClient = mock(BlobContainerClient.class);
+        BlobClient blobClient = mock(BlobClient.class);
+        BlobStorageException serverError = mock(BlobStorageException.class);
+        when(serverError.getStatusCode()).thenReturn(500);
+        when(serviceClient.getBlobContainerClient("docs")).thenReturn(containerClient);
+        when(containerClient.getBlobClient("customer/a.txt")).thenReturn(blobClient);
+        when(blobClient.getProperties()).thenThrow(serverError);
+
+        AzureBlobProviderClient client = new AzureBlobProviderClient(serviceClient);
+
+        assertThrows(
+                ObjectStorageException.class,
+                () -> client.saveFile("docs", new UploadFileRequest(
+                        "customer/a.txt",
+                        new ByteArrayInputStream(new byte[]{1}),
+                        1L,
+                        "text/plain",
+                        Map.of(),
+                        "v1",
+                        null,
+                        null
+                ))
+        );
     }
 
     @Test

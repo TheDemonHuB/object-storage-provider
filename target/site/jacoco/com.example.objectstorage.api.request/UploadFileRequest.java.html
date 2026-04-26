@@ -25,7 +25,7 @@ public record UploadFileRequest(
 <span class="fc" id="L25">        contentType = ValidationUtils.normalizeToNull(contentType);</span>
 <span class="fc" id="L26">        versionId = ValidationUtils.normalizeToNull(versionId);</span>
 <span class="fc" id="L27">        bucket = ValidationUtils.normalizeToNull(bucket);</span>
-<span class="pc bpc" id="L28" title="1 of 2 branches missed.">        metadata = metadata == null ? Map.of() : Map.copyOf(metadata);</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">        metadata = metadata == null ? Map.of() : Map.copyOf(metadata);</span>
 <span class="fc" id="L29">    }</span>
 
     @Override
