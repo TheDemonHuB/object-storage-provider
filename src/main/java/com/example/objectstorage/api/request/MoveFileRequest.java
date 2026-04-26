@@ -1,0 +1,24 @@
+package com.example.objectstorage.api.request;
+
+import com.example.objectstorage.api.StorageProvider;
+import com.example.objectstorage.core.ValidationUtils;
+
+public record MoveFileRequest(
+        String sourceKey,
+        String targetKey,
+        StorageProvider sourceProvider,
+        String sourceBucket,
+        StorageProvider targetProvider,
+        String targetBucket
+) {
+    public MoveFileRequest {
+        sourceKey = ValidationUtils.requireNonBlank(sourceKey, "sourceKey");
+        targetKey = ValidationUtils.requireNonBlank(targetKey, "targetKey");
+        sourceBucket = ValidationUtils.normalizeToNull(sourceBucket);
+        targetBucket = ValidationUtils.normalizeToNull(targetBucket);
+    }
+
+    public MoveFileRequest(String sourceKey, String targetKey) {
+        this(sourceKey, targetKey, null, null, null, null);
+    }
+}

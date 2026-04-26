@@ -1,0 +1,1075 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultObjectStorageService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Object Storage Library</a> &gt; <a href="index.source.html" class="el_package">com.example.objectstorage.core</a> &gt; <span class="el_source">DefaultObjectStorageService.java</span></div><h1>DefaultObjectStorageService.java</h1><pre class="source lang-java linenums">package com.example.objectstorage.core;
+
+import com.example.objectstorage.api.ObjectStorageService;
+import com.example.objectstorage.api.StorageProvider;
+import com.example.objectstorage.api.request.CopyFileRequest;
+import com.example.objectstorage.api.request.DeleteFileRequest;
+import com.example.objectstorage.api.request.GetFileRequest;
+import com.example.objectstorage.api.request.ListFilesRequest;
+import com.example.objectstorage.api.request.MoveFileRequest;
+import com.example.objectstorage.api.request.UploadFileRequest;
+import com.example.objectstorage.api.response.DeletedObject;
+import com.example.objectstorage.api.response.RetrievedObject;
+import com.example.objectstorage.api.response.StorageObjectInfo;
+import com.example.objectstorage.api.response.StoredObject;
+import com.example.objectstorage.config.ObjectStorageServiceBuilder;
+import java.time.Clock;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
+import java.util.function.Function;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public final class DefaultObjectStorageService implements ObjectStorageService {
+<span class="fc" id="L40">    private static final Logger LOGGER = LoggerFactory.getLogger(DefaultObjectStorageService.class);</span>
+    private static final String BATCH_PREFIX = &quot;Batch &quot;;
+<span class="fc" id="L42">    private static final DateTimeFormatter SAVE_PATH_FORMATTER = DateTimeFormatter.ofPattern(&quot;yyyy/MM/dd/HHmmssSSS&quot;);</span>
+
+    private final Map&lt;StorageProvider, ProviderClient&gt; providers;
+    private final StorageProvider defaultProvider;
+    private final String defaultBucket;
+    private final Semaphore saveSemaphore;
+    private final int batchSize;
+    private final int maxConcurrentBatchItems;
+    private final int maxBatchItems;
+    private final Integer defaultListMaxResults;
+    private final Set&lt;String&gt; allowedFileExtensions;
+    private final Long maxFileSizeBytes;
+    private final String basePath;
+    private final ZoneId timeZone;
+    private final Clock clock;
+
+    public DefaultObjectStorageService(
+            Map&lt;StorageProvider, ProviderClient&gt; providers,
+            StorageProvider defaultProvider,
+            String defaultBucket
+    ) {
+<span class="fc" id="L63">        this(providers, defaultProvider, defaultBucket, 0);</span>
+<span class="fc" id="L64">    }</span>
+
+    public DefaultObjectStorageService(
+            Map&lt;StorageProvider, ProviderClient&gt; providers,
+            StorageProvider defaultProvider,
+            String defaultBucket,
+            int maxConcurrentSaves
+    ) {
+<span class="fc" id="L72">        this(</span>
+                providers,
+                defaultProvider,
+                defaultBucket,
+                maxConcurrentSaves,
+<span class="fc" id="L77">                ServiceSettings.defaultSettings()</span>
+        );
+<span class="fc" id="L79">    }</span>
+
+    public DefaultObjectStorageService(
+            Map&lt;StorageProvider, ProviderClient&gt; providers,
+            StorageProvider defaultProvider,
+            String defaultBucket,
+            int maxConcurrentSaves,
+            int batchSize,
+            int maxConcurrentBatchItems,
+            int maxBatchItems
+    ) {
+<span class="fc" id="L90">        this(</span>
+                providers,
+                defaultProvider,
+                defaultBucket,
+                maxConcurrentSaves,
+                new ServiceSettings(
+                        batchSize,
+                        maxConcurrentBatchItems,
+                        maxBatchItems,
+                        ObjectStorageServiceBuilder.DEFAULT_LIST_MAX_RESULTS,
+                        null,
+                        null,
+                        null,
+                        ObjectStorageServiceBuilder.DEFAULT_TIME_ZONE,
+<span class="fc" id="L104">                        Clock.system(ObjectStorageServiceBuilder.DEFAULT_TIME_ZONE)</span>
+                )
+        );
+<span class="fc" id="L107">    }</span>
+
+    public DefaultObjectStorageService(
+            Map&lt;StorageProvider, ProviderClient&gt; providers,
+            StorageProvider defaultProvider,
+            String defaultBucket,
+            int maxConcurrentSaves,
+            ServiceSettings settings
+<span class="fc" id="L115">    ) {</span>
+<span class="pc bpc" id="L116" title="2 of 4 branches missed.">        if (providers == null || providers.isEmpty()) {</span>
+<span class="nc" id="L117">            throw new IllegalArgumentException(&quot;providers must not be empty&quot;);</span>
+        }
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        if (maxConcurrentSaves &lt; 0) {</span>
+<span class="fc" id="L120">            throw new IllegalArgumentException(&quot;maxConcurrentSaves must not be negative&quot;);</span>
+        }
+<span class="fc" id="L122">        Objects.requireNonNull(settings, &quot;settings must not be null&quot;);</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (settings.batchSize() &lt;= 0) {</span>
+<span class="fc" id="L124">            throw new IllegalArgumentException(&quot;batchSize must be greater than 0&quot;);</span>
+        }
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (settings.maxConcurrentBatchItems() &lt;= 0) {</span>
+<span class="fc" id="L127">            throw new IllegalArgumentException(&quot;maxConcurrentBatchItems must be greater than 0&quot;);</span>
+        }
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (settings.maxBatchItems() &lt;= 0) {</span>
+<span class="fc" id="L130">            throw new IllegalArgumentException(&quot;maxBatchItems must be greater than 0&quot;);</span>
+        }
+<span class="pc bpc" id="L132" title="1 of 4 branches missed.">        if (settings.defaultListMaxResults() != null &amp;&amp; settings.defaultListMaxResults() &lt;= 0) {</span>
+<span class="nc" id="L133">            throw new IllegalArgumentException(&quot;defaultListMaxResults must be greater than 0&quot;);</span>
+        }
+<span class="pc bpc" id="L135" title="1 of 4 branches missed.">        if (settings.maxFileSizeBytes() != null &amp;&amp; settings.maxFileSizeBytes() &lt;= 0) {</span>
+<span class="nc" id="L136">            throw new IllegalArgumentException(&quot;maxFileSizeBytes must be greater than 0&quot;);</span>
+        }
+<span class="fc" id="L138">        this.defaultProvider = Objects.requireNonNull(defaultProvider, &quot;defaultProvider must not be null&quot;);</span>
+<span class="fc" id="L139">        this.defaultBucket = ValidationUtils.requireNonBlank(defaultBucket, &quot;defaultBucket&quot;);</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (!providers.containsKey(defaultProvider)) {</span>
+<span class="fc" id="L141">            throw new IllegalArgumentException(&quot;defaultProvider is not configured: &quot; + defaultProvider);</span>
+        }
+<span class="fc" id="L143">        this.providers = Map.copyOf(new EnumMap&lt;&gt;(providers));</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        this.saveSemaphore = maxConcurrentSaves == 0 ? null : new Semaphore(maxConcurrentSaves, true);</span>
+<span class="fc" id="L145">        this.batchSize = settings.batchSize();</span>
+<span class="fc" id="L146">        this.maxConcurrentBatchItems = settings.maxConcurrentBatchItems();</span>
+<span class="fc" id="L147">        this.maxBatchItems = settings.maxBatchItems();</span>
+<span class="fc" id="L148">        this.defaultListMaxResults = settings.defaultListMaxResults();</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        this.allowedFileExtensions = settings.allowedFileExtensions() == null</span>
+<span class="fc" id="L150">                ? null</span>
+<span class="fc" id="L151">                : Set.copyOf(settings.allowedFileExtensions());</span>
+<span class="fc" id="L152">        this.maxFileSizeBytes = settings.maxFileSizeBytes();</span>
+<span class="fc" id="L153">        this.basePath = normalizePath(settings.basePath());</span>
+<span class="fc" id="L154">        this.timeZone = Objects.requireNonNull(settings.timeZone(), &quot;timeZone must not be null&quot;);</span>
+<span class="fc" id="L155">        this.clock = Objects.requireNonNull(settings.clock(), &quot;clock must not be null&quot;);</span>
+<span class="fc" id="L156">    }</span>
+
+    @Override
+    public List&lt;StoredObject&gt; saveFiles(List&lt;UploadFileRequest&gt; requests) {
+<span class="fc" id="L160">        List&lt;UploadFileRequest&gt; validatedRequests = validateBatchRequests(requests, &quot;save&quot;);</span>
+<span class="fc" id="L161">        List&lt;ResolvedSaveRequest&gt; resolvedRequests = resolveSaveRequests(validatedRequests);</span>
+<span class="fc" id="L162">        int itemCount = resolvedRequests.size();</span>
+<span class="fc" id="L163">        LOGGER.info(</span>
+                &quot;Starting save batch: provider={}, bucket={}, itemCount={}, batchSize={}, maxConcurrentBatchItems={}, maxBatchItems={}, basePath={}, timeZone={}&quot;,
+                defaultProvider,
+                defaultBucket,
+<span class="fc" id="L167">                itemCount,</span>
+<span class="fc" id="L168">                batchSize,</span>
+<span class="fc" id="L169">                maxConcurrentBatchItems,</span>
+<span class="fc" id="L170">                maxBatchItems,</span>
+                basePath,
+                timeZone
+        );
+<span class="fc" id="L174">        List&lt;StoredObject&gt; savedObjects = processSaveFilesTransactionally(resolvedRequests);</span>
+<span class="fc" id="L175">        int savedItemCount = savedObjects.size();</span>
+<span class="fc" id="L176">        LOGGER.info(</span>
+                &quot;Completed save batch: provider={}, bucket={}, itemCount={}&quot;,
+                defaultProvider,
+                defaultBucket,
+<span class="fc" id="L180">                savedItemCount</span>
+        );
+<span class="fc" id="L182">        return savedObjects;</span>
+    }
+
+    @Override
+    public List&lt;RetrievedObject&gt; getFiles(List&lt;GetFileRequest&gt; requests) {
+<span class="fc" id="L187">        List&lt;GetFileRequest&gt; validatedRequests = validateBatchRequests(requests, &quot;get&quot;);</span>
+<span class="fc" id="L188">        int itemCount = validatedRequests.size();</span>
+<span class="fc" id="L189">        LOGGER.info(&quot;Starting get batch: itemCount={}&quot;, itemCount);</span>
+<span class="fc" id="L190">        List&lt;RetrievedObject&gt; objects = processInBatches(validatedRequests, this::getOne, &quot;get&quot;, false);</span>
+<span class="fc" id="L191">        int objectCount = objects.size();</span>
+<span class="fc" id="L192">        LOGGER.info(&quot;Completed get batch: itemCount={}&quot;, objectCount);</span>
+<span class="fc" id="L193">        return objects;</span>
+    }
+
+    @Override
+    public List&lt;DeletedObject&gt; deleteFiles(List&lt;DeleteFileRequest&gt; requests) {
+<span class="fc" id="L198">        List&lt;DeleteFileRequest&gt; validatedRequests = validateBatchRequests(requests, &quot;delete&quot;);</span>
+<span class="fc" id="L199">        int itemCount = validatedRequests.size();</span>
+<span class="fc" id="L200">        LOGGER.info(&quot;Starting delete batch: itemCount={}&quot;, itemCount);</span>
+<span class="fc" id="L201">        List&lt;DeletedObject&gt; deletedObjects = processInBatches(validatedRequests, this::deleteOne, &quot;delete&quot;, false);</span>
+<span class="fc" id="L202">        int deletedItemCount = deletedObjects.size();</span>
+<span class="fc" id="L203">        LOGGER.info(&quot;Completed delete batch: itemCount={}&quot;, deletedItemCount);</span>
+<span class="fc" id="L204">        return deletedObjects;</span>
+    }
+
+    @Override
+    public List&lt;StoredObject&gt; copyFiles(List&lt;CopyFileRequest&gt; requests) {
+<span class="fc" id="L209">        List&lt;CopyFileRequest&gt; validatedRequests = validateBatchRequests(requests, &quot;copy&quot;);</span>
+<span class="fc" id="L210">        int itemCount = validatedRequests.size();</span>
+<span class="fc" id="L211">        LOGGER.info(&quot;Starting copy batch: itemCount={}&quot;, itemCount);</span>
+<span class="fc" id="L212">        List&lt;StoredObject&gt; copiedObjects = processInBatches(validatedRequests, this::copyOne, &quot;copy&quot;, false);</span>
+<span class="fc" id="L213">        int copiedItemCount = copiedObjects.size();</span>
+<span class="fc" id="L214">        LOGGER.info(&quot;Completed copy batch: itemCount={}&quot;, copiedItemCount);</span>
+<span class="fc" id="L215">        return copiedObjects;</span>
+    }
+
+    @Override
+    public List&lt;StoredObject&gt; moveFiles(List&lt;MoveFileRequest&gt; requests) {
+<span class="fc" id="L220">        List&lt;MoveFileRequest&gt; validatedRequests = validateBatchRequests(requests, &quot;move&quot;);</span>
+<span class="fc" id="L221">        int itemCount = validatedRequests.size();</span>
+<span class="fc" id="L222">        LOGGER.info(&quot;Starting move batch: itemCount={}&quot;, itemCount);</span>
+<span class="fc" id="L223">        List&lt;StoredObject&gt; movedObjects = processInBatches(validatedRequests, this::moveOne, &quot;move&quot;, false);</span>
+<span class="fc" id="L224">        int movedItemCount = movedObjects.size();</span>
+<span class="fc" id="L225">        LOGGER.info(&quot;Completed move batch: itemCount={}&quot;, movedItemCount);</span>
+<span class="fc" id="L226">        return movedObjects;</span>
+    }
+
+    private StoredObject saveOne(ResolvedTarget target, UploadFileRequest request) {
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        if (saveSemaphore == null) {</span>
+<span class="fc" id="L231">            return resolveClient(target.provider()).saveFile(target.bucket(), request);</span>
+        }
+
+<span class="fc" id="L234">        acquireSavePermit();</span>
+        try {
+<span class="fc" id="L236">            return resolveClient(target.provider()).saveFile(target.bucket(), request);</span>
+        } finally {
+<span class="fc" id="L238">            saveSemaphore.release();</span>
+        }
+    }
+
+    private RetrievedObject getOne(GetFileRequest request) {
+<span class="fc" id="L243">        ResolvedTarget target = resolveTarget(request.provider(), request.bucket());</span>
+<span class="fc" id="L244">        return resolveClient(target.provider()).getFile(target.bucket(), request);</span>
+    }
+
+    private DeletedObject deleteOne(DeleteFileRequest request) {
+<span class="fc" id="L248">        ResolvedTarget target = resolveTarget(request.provider(), request.bucket());</span>
+<span class="fc" id="L249">        resolveClient(target.provider()).deleteFile(target.bucket(), request);</span>
+<span class="fc" id="L250">        return new DeletedObject(target.provider(), target.bucket(), request.key());</span>
+    }
+
+    private StoredObject copyOne(CopyFileRequest request) {
+<span class="fc" id="L254">        ResolvedTarget sourceTarget = resolveTarget(request.sourceProvider(), request.sourceBucket());</span>
+<span class="fc" id="L255">        ResolvedTarget targetTarget = resolveTarget(request.targetProvider(), request.targetBucket());</span>
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">        if (LOGGER.isDebugEnabled()) {</span>
+<span class="nc" id="L257">            StorageProvider sourceProvider = sourceTarget.provider();</span>
+<span class="nc" id="L258">            String sourceBucket = sourceTarget.bucket();</span>
+<span class="nc" id="L259">            String sourceKey = request.sourceKey();</span>
+<span class="nc" id="L260">            StorageProvider destinationProvider = targetTarget.provider();</span>
+<span class="nc" id="L261">            String destinationBucket = targetTarget.bucket();</span>
+<span class="nc" id="L262">            String destinationKey = request.targetKey();</span>
+<span class="nc" id="L263">            LOGGER.debug(</span>
+                    &quot;Copy item started: sourceProvider={}, sourceBucket={}, sourceKey={}, targetProvider={}, targetBucket={}, targetKey={}&quot;,
+                    sourceProvider,
+                    sourceBucket,
+                    sourceKey,
+                    destinationProvider,
+                    destinationBucket,
+                    destinationKey
+            );
+        }
+<span class="fc" id="L273">        RetrievedObject sourceObject = resolveClient(sourceTarget.provider()).getFile(</span>
+<span class="fc" id="L274">                sourceTarget.bucket(),</span>
+<span class="fc" id="L275">                new GetFileRequest(request.sourceKey(), sourceTarget.provider(), sourceTarget.bucket())</span>
+        );
+<span class="fc" id="L277">        StoredObject storedObject = resolveClient(targetTarget.provider()).saveFile(</span>
+<span class="fc" id="L278">                targetTarget.bucket(),</span>
+                new UploadFileRequest(
+<span class="fc" id="L280">                        request.targetKey(),</span>
+<span class="fc" id="L281">                        sourceObject.content(),</span>
+<span class="fc" id="L282">                        sourceObject.contentType(),</span>
+<span class="fc" id="L283">                        sourceObject.metadata(),</span>
+<span class="fc" id="L284">                        targetTarget.provider(),</span>
+<span class="fc" id="L285">                        targetTarget.bucket()</span>
+                )
+        );
+<span class="fc" id="L288">        StoredObject result = new StoredObject(</span>
+<span class="fc" id="L289">                storedObject.provider(),</span>
+<span class="fc" id="L290">                storedObject.bucket(),</span>
+<span class="fc" id="L291">                request.sourceKey(),</span>
+<span class="fc" id="L292">                storedObject.key(),</span>
+<span class="fc" id="L293">                extractFilename(request.sourceKey()),</span>
+<span class="fc" id="L294">                extractFilename(storedObject.key()),</span>
+<span class="fc" id="L295">                storedObject.eTag(),</span>
+<span class="fc" id="L296">                storedObject.versionId()</span>
+        );
+<span class="pc bpc" id="L298" title="1 of 2 branches missed.">        if (LOGGER.isDebugEnabled()) {</span>
+<span class="nc" id="L299">            StorageProvider sourceProvider = sourceTarget.provider();</span>
+<span class="nc" id="L300">            String sourceBucket = sourceTarget.bucket();</span>
+<span class="nc" id="L301">            String sourceKey = request.sourceKey();</span>
+<span class="nc" id="L302">            StorageProvider destinationProvider = targetTarget.provider();</span>
+<span class="nc" id="L303">            String destinationBucket = targetTarget.bucket();</span>
+<span class="nc" id="L304">            String destinationKey = result.key();</span>
+<span class="nc" id="L305">            LOGGER.debug(</span>
+                    &quot;Copy item completed: sourceProvider={}, sourceBucket={}, sourceKey={}, targetProvider={}, targetBucket={}, targetKey={}&quot;,
+                    sourceProvider,
+                    sourceBucket,
+                    sourceKey,
+                    destinationProvider,
+                    destinationBucket,
+                    destinationKey
+            );
+        }
+<span class="fc" id="L315">        return result;</span>
+    }
+
+    private StoredObject moveOne(MoveFileRequest request) {
+<span class="fc" id="L319">        ResolvedTarget sourceTarget = resolveTarget(request.sourceProvider(), request.sourceBucket());</span>
+<span class="fc" id="L320">        StoredObject copiedObject = copyOne(new CopyFileRequest(</span>
+<span class="fc" id="L321">                request.sourceKey(),</span>
+<span class="fc" id="L322">                request.targetKey(),</span>
+<span class="fc" id="L323">                request.sourceProvider(),</span>
+<span class="fc" id="L324">                request.sourceBucket(),</span>
+<span class="fc" id="L325">                request.targetProvider(),</span>
+<span class="fc" id="L326">                request.targetBucket()</span>
+        ));
+<span class="fc" id="L328">        resolveClient(sourceTarget.provider()).deleteFile(</span>
+<span class="fc" id="L329">                sourceTarget.bucket(),</span>
+<span class="fc" id="L330">                new DeleteFileRequest(request.sourceKey(), sourceTarget.provider(), sourceTarget.bucket())</span>
+        );
+<span class="fc" id="L332">        return copiedObject;</span>
+    }
+
+    private List&lt;StoredObject&gt; processSaveFilesTransactionally(List&lt;ResolvedSaveRequest&gt; requests) {
+<span class="fc bfc" id="L336" title="All 2 branches covered.">        if (requests.isEmpty()) {</span>
+<span class="fc" id="L337">            return List.of();</span>
+        }
+
+<span class="fc" id="L340">        LOGGER.info(</span>
+                &quot;Save transactional processing started: provider={}, bucket={}, itemCount={}, chunkSize={}&quot;,
+                defaultProvider,
+                defaultBucket,
+<span class="fc" id="L344">                requests.size(),</span>
+<span class="fc" id="L345">                batchSize</span>
+        );
+<span class="fc" id="L347">        List&lt;StoredObject&gt; results = new ArrayList&lt;&gt;(Collections.nCopies(requests.size(), null));</span>
+<span class="fc" id="L348">        List&lt;StoredObject&gt; savedObjects = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L349">        try (ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {</span>
+<span class="fc bfc" id="L350" title="All 2 branches covered.">            for (int start = 0; start &lt; requests.size(); start += batchSize) {</span>
+<span class="fc" id="L351">                int end = Math.min(start + batchSize, requests.size());</span>
+<span class="fc" id="L352">                LOGGER.info(</span>
+                        &quot;Processing save chunk: provider={}, bucket={}, startIndex={}, endExclusive={}, chunkItemCount={}&quot;,
+                        defaultProvider,
+                        defaultBucket,
+<span class="fc" id="L356">                        start,</span>
+<span class="fc" id="L357">                        end,</span>
+<span class="fc" id="L358">                        end - start</span>
+                );
+<span class="fc" id="L360">                processSaveChunk(requests, results, savedObjects, start, end, executorService);</span>
+<span class="fc" id="L361">                LOGGER.info(</span>
+                        &quot;Completed save chunk: provider={}, bucket={}, startIndex={}, endExclusive={}, savedSoFar={}&quot;,
+                        defaultProvider,
+                        defaultBucket,
+<span class="fc" id="L365">                        start,</span>
+<span class="fc" id="L366">                        end,</span>
+<span class="fc" id="L367">                        savedObjects.size()</span>
+                );
+            }
+<span class="fc" id="L370">        } catch (ObjectStorageException ex) {</span>
+<span class="fc" id="L371">            rollbackSavedObjects(savedObjects, ex);</span>
+<span class="fc" id="L372">            throw ex;</span>
+<span class="nc" id="L373">        } catch (RuntimeException ex) {</span>
+<span class="nc" id="L374">            ObjectStorageException wrapped = new ObjectStorageException(&quot;Batch save failed&quot;, ex);</span>
+<span class="nc" id="L375">            rollbackSavedObjects(savedObjects, wrapped);</span>
+<span class="nc" id="L376">            throw wrapped;</span>
+<span class="fc" id="L377">        }</span>
+<span class="fc" id="L378">        LOGGER.info(</span>
+                &quot;Save transactional processing finished: provider={}, bucket={}, itemCount={}, savedCount={}&quot;,
+                defaultProvider,
+                defaultBucket,
+<span class="fc" id="L382">                requests.size(),</span>
+<span class="fc" id="L383">                savedObjects.size()</span>
+        );
+<span class="fc" id="L385">        return List.copyOf(results);</span>
+    }
+
+    private void processSaveChunk(
+            List&lt;ResolvedSaveRequest&gt; requests,
+            List&lt;StoredObject&gt; results,
+            List&lt;StoredObject&gt; savedObjects,
+            int startInclusive,
+            int endExclusive,
+            ExecutorService executorService
+    ) {
+<span class="fc" id="L396">        CompletionService&lt;IndexedResult&lt;StoredObject&gt;&gt; completionService = new ExecutorCompletionService&lt;&gt;(executorService);</span>
+<span class="fc" id="L397">        SaveChunkState state = submitInitialSaveItems(completionService, requests, startInclusive, endExclusive);</span>
+<span class="fc" id="L398">        LOGGER.debug(</span>
+                &quot;Save chunk submitted initial items: startIndex={}, endExclusive={}, inFlight={}, nextIndex={}&quot;,
+<span class="fc" id="L400">                startInclusive,</span>
+<span class="fc" id="L401">                endExclusive,</span>
+<span class="fc" id="L402">                state.inFlight(),</span>
+<span class="fc" id="L403">                state.nextIndex()</span>
+        );
+
+<span class="fc" id="L406">        ObjectStorageException failure = null;</span>
+<span class="fc bfc" id="L407" title="All 2 branches covered.">        while (state.inFlight() &gt; 0) {</span>
+            try {
+<span class="fc" id="L409">                IndexedResult&lt;StoredObject&gt; result = completionService.take().get();</span>
+<span class="fc" id="L410">                state = state.onItemCompleted();</span>
+<span class="fc" id="L411">                results.set(result.index(), result.value());</span>
+<span class="fc" id="L412">                savedObjects.add(result.value());</span>
+<span class="fc" id="L413">                String storedKey = result.value().key();</span>
+<span class="fc" id="L414">                LOGGER.debug(</span>
+                        &quot;Save item completed: provider={}, bucket={}, index={}, storedKey={}, inFlightRemaining={}&quot;,
+                        defaultProvider,
+                        defaultBucket,
+<span class="fc" id="L418">                        result.index(),</span>
+                        storedKey,
+<span class="fc" id="L420">                        state.inFlight()</span>
+                );
+
+<span class="pc bpc" id="L423" title="1 of 4 branches missed.">                if (failure == null &amp;&amp; state.hasRemainingItems(endExclusive)) {</span>
+<span class="fc" id="L424">                    int nextIndex = state.nextIndex();</span>
+<span class="fc" id="L425">                    ResolvedSaveRequest nextRequest = requests.get(nextIndex);</span>
+<span class="fc" id="L426">                    submitSaveItem(completionService, nextIndex, nextRequest);</span>
+<span class="fc" id="L427">                    String nextKey = nextRequest.storedRequest().key();</span>
+<span class="fc" id="L428">                    LOGGER.debug(</span>
+                            &quot;Save item submitted after completion: index={}, key={}&quot;,
+<span class="fc" id="L430">                            nextIndex,</span>
+                            nextKey
+                    );
+<span class="fc" id="L433">                    state = state.onItemSubmitted();</span>
+                }
+<span class="nc" id="L435">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L436">                Thread.currentThread().interrupt();</span>
+<span class="nc" id="L437">                failure = new ObjectStorageException(&quot;Batch save interrupted&quot;, ex);</span>
+<span class="nc" id="L438">                state = state.onItemCompleted();</span>
+<span class="nc" id="L439">                LOGGER.warn(</span>
+                        &quot;Save chunk interrupted: provider={}, bucket={}, startIndex={}, endExclusive={}, inFlightAfterInterrupt={}, failure={}&quot;,
+                        defaultProvider,
+                        defaultBucket,
+<span class="nc" id="L443">                        startInclusive,</span>
+<span class="nc" id="L444">                        endExclusive,</span>
+<span class="nc" id="L445">                        state.inFlight(),</span>
+<span class="nc" id="L446">                        summarizeFailure(ex)</span>
+                );
+<span class="fc" id="L448">            } catch (ExecutionException ex) {</span>
+<span class="fc" id="L449">                state = state.onItemCompleted();</span>
+<span class="fc" id="L450">                Throwable cause = ex.getCause();</span>
+<span class="pc bpc" id="L451" title="1 of 2 branches missed.">                if (failure == null) {</span>
+<span class="fc" id="L452">                    failure = toObjectStorageException(&quot;Batch save failed&quot;, cause);</span>
+                }
+<span class="fc" id="L454">                LOGGER.warn(</span>
+                        &quot;Save item execution failed: provider={}, bucket={}, startIndex={}, endExclusive={}, inFlightAfterFailure={}&quot;,
+                        defaultProvider,
+                        defaultBucket,
+<span class="fc" id="L458">                        startInclusive,</span>
+<span class="fc" id="L459">                        endExclusive,</span>
+<span class="fc" id="L460">                        state.inFlight(),</span>
+                        cause
+                );
+<span class="pc" id="L463">            }</span>
+        }
+
+<span class="fc bfc" id="L466" title="All 2 branches covered.">        if (failure != null) {</span>
+<span class="fc" id="L467">            LOGGER.warn(</span>
+                    &quot;Save chunk failed: provider={}, bucket={}, startIndex={}, endExclusive={}, savedBeforeChunkFailure={}&quot;,
+                    defaultProvider,
+                    defaultBucket,
+<span class="fc" id="L471">                    startInclusive,</span>
+<span class="fc" id="L472">                    endExclusive,</span>
+<span class="fc" id="L473">                    savedObjects.size(),</span>
+                    failure
+            );
+<span class="fc" id="L476">            throw failure;</span>
+        }
+<span class="fc" id="L478">    }</span>
+
+    private void submitSaveItem(
+            CompletionService&lt;IndexedResult&lt;StoredObject&gt;&gt; completionService,
+            int index,
+            ResolvedSaveRequest request
+    ) {
+<span class="fc" id="L485">        completionService.submit(() -&gt; {</span>
+<span class="fc" id="L486">            LOGGER.debug(</span>
+                    &quot;Submitting save item to provider: provider={}, bucket={}, index={}, originalKey={}, storedKey={}&quot;,
+<span class="fc" id="L488">                    request.target().provider(),</span>
+<span class="fc" id="L489">                    request.target().bucket(),</span>
+<span class="fc" id="L490">                    index,</span>
+<span class="fc" id="L491">                    request.originalRequest().key(),</span>
+<span class="fc" id="L492">                    request.storedRequest().key()</span>
+            );
+            try {
+<span class="fc" id="L495">                StoredObject storedObject = saveOne(request.target(), request.storedRequest());</span>
+<span class="fc" id="L496">                LOGGER.debug(</span>
+                        &quot;Provider save success: provider={}, bucket={}, index={}, storedKey={}&quot;,
+<span class="fc" id="L498">                        request.target().provider(),</span>
+<span class="fc" id="L499">                        request.target().bucket(),</span>
+<span class="fc" id="L500">                        index,</span>
+<span class="fc" id="L501">                        storedObject.key()</span>
+                );
+<span class="fc" id="L503">                return new IndexedResult&lt;&gt;(index, enrichStoredObject(request, storedObject));</span>
+<span class="fc" id="L504">            } catch (RuntimeException ex) {</span>
+<span class="fc" id="L505">                throw createBatchFailure(operationFailureMessage(index, request.originalRequest()), ex);</span>
+            }
+        });
+<span class="fc" id="L508">    }</span>
+
+    private StoredObject enrichStoredObject(ResolvedSaveRequest request, StoredObject storedObject) {
+<span class="fc" id="L511">        return new StoredObject(</span>
+<span class="fc" id="L512">                storedObject.provider(),</span>
+<span class="fc" id="L513">                storedObject.bucket(),</span>
+<span class="fc" id="L514">                request.originalRequest().key(),</span>
+<span class="fc" id="L515">                storedObject.key(),</span>
+<span class="fc" id="L516">                extractFilename(request.normalizedOriginalKey()),</span>
+<span class="fc" id="L517">                extractFilename(storedObject.key()),</span>
+<span class="fc" id="L518">                storedObject.eTag(),</span>
+<span class="fc" id="L519">                storedObject.versionId()</span>
+        );
+    }
+
+    private void rollbackSavedObjects(List&lt;StoredObject&gt; savedObjects, ObjectStorageException originalFailure) {
+<span class="pc bpc" id="L524" title="1 of 2 branches missed.">        if (savedObjects.isEmpty()) {</span>
+<span class="nc" id="L525">            LOGGER.info(</span>
+                    &quot;No saved objects to roll back after save batch failure: provider={}, bucket={}&quot;,
+                    defaultProvider,
+                    defaultBucket,
+                    originalFailure
+            );
+<span class="nc" id="L531">            return;</span>
+        }
+<span class="fc" id="L533">        int savedObjectCount = savedObjects.size();</span>
+<span class="fc" id="L534">        LOGGER.warn(</span>
+                &quot;Rolling back saved objects after save batch failure: provider={}, bucket={}, itemCount={}&quot;,
+                defaultProvider,
+                defaultBucket,
+<span class="fc" id="L538">                savedObjectCount,</span>
+                originalFailure
+        );
+<span class="fc bfc" id="L541" title="All 2 branches covered.">        for (int index = savedObjects.size() - 1; index &gt;= 0; index--) {</span>
+<span class="fc" id="L542">            StoredObject savedObject = savedObjects.get(index);</span>
+<span class="fc" id="L543">            StorageProvider provider = savedObject.provider();</span>
+<span class="fc" id="L544">            String bucket = savedObject.bucket();</span>
+<span class="fc" id="L545">            String key = savedObject.key();</span>
+            try {
+<span class="fc" id="L547">                LOGGER.info(</span>
+                        &quot;Rolling back saved object: provider={}, bucket={}, key={}&quot;,
+                        provider,
+                        bucket,
+                        key
+                );
+<span class="fc" id="L553">                resolveClient(provider).deleteFile(bucket, new DeleteFileRequest(key));</span>
+<span class="nc" id="L554">            } catch (RuntimeException rollbackFailure) {</span>
+<span class="nc" id="L555">                LOGGER.warn(</span>
+                        &quot;Rollback delete failed: provider={}, bucket={}, key={}&quot;,
+                        provider,
+                        bucket,
+                        key,
+                        rollbackFailure
+                );
+<span class="nc" id="L562">                originalFailure.addSuppressed(new ObjectStorageException(</span>
+                        &quot;Rollback delete failed for &quot; + provider + &quot;:&quot; + bucket + &quot;/&quot; + key,
+                        rollbackFailure
+                ));
+<span class="fc" id="L566">            }</span>
+        }
+<span class="fc" id="L568">        LOGGER.warn(</span>
+                &quot;Rollback processing completed: provider={}, bucket={}, attemptedItemCount={}&quot;,
+                defaultProvider,
+                defaultBucket,
+<span class="fc" id="L572">                savedObjectCount</span>
+        );
+<span class="fc" id="L574">    }</span>
+
+    @Override
+    public List&lt;StorageObjectInfo&gt; listFiles(ListFilesRequest request) {
+<span class="fc" id="L578">        Objects.requireNonNull(request, &quot;request must not be null&quot;);</span>
+<span class="fc" id="L579">        ListFilesRequest resolvedRequest = resolveListRequest(request);</span>
+<span class="fc" id="L580">        ResolvedTarget target = resolveTarget(resolvedRequest.provider(), resolvedRequest.bucket());</span>
+<span class="fc" id="L581">        StorageProvider targetProvider = target.provider();</span>
+<span class="fc" id="L582">        String targetBucket = target.bucket();</span>
+<span class="fc" id="L583">        String prefix = resolvedRequest.prefix();</span>
+<span class="fc" id="L584">        Integer maxResults = resolvedRequest.maxResults();</span>
+<span class="fc" id="L585">        Integer requestedMaxResults = request.maxResults();</span>
+<span class="fc" id="L586">        LOGGER.info(</span>
+                &quot;Listing files: provider={}, bucket={}, prefix={}, requestedMaxResults={}, effectiveMaxResults={}&quot;,
+                targetProvider,
+                targetBucket,
+                prefix,
+                requestedMaxResults,
+                maxResults
+        );
+<span class="fc" id="L594">        List&lt;StorageObjectInfo&gt; objects = resolveClient(targetProvider).listFiles(targetBucket, resolvedRequest);</span>
+<span class="fc" id="L595">        int objectCount = objects.size();</span>
+<span class="fc" id="L596">        LOGGER.info(</span>
+                &quot;Completed file listing: provider={}, bucket={}, itemCount={}&quot;,
+                targetProvider,
+                targetBucket,
+<span class="fc" id="L600">                objectCount</span>
+        );
+<span class="fc" id="L602">        return objects;</span>
+    }
+
+    private ListFilesRequest resolveListRequest(ListFilesRequest request) {
+<span class="fc" id="L606">        String prefix = request.prefix();</span>
+<span class="fc bfc" id="L607" title="All 2 branches covered.">        Integer effectiveMaxResults = request.maxResults() != null ? request.maxResults() : defaultListMaxResults;</span>
+<span class="fc" id="L608">        return new ListFilesRequest(prefix, effectiveMaxResults, request.provider(), request.bucket());</span>
+    }
+
+    @Override
+    public void close() {
+<span class="fc bfc" id="L613" title="All 2 branches covered.">        for (ProviderClient provider : providers.values()) {</span>
+            try {
+<span class="fc" id="L615">                provider.close();</span>
+<span class="nc" id="L616">            } catch (RuntimeException ex) {</span>
+<span class="nc" id="L617">                StorageProvider storageProvider = provider.provider();</span>
+<span class="nc" id="L618">                LOGGER.warn(&quot;Provider close failed: provider={}&quot;, storageProvider, ex);</span>
+<span class="fc" id="L619">            }</span>
+<span class="fc" id="L620">        }</span>
+<span class="fc" id="L621">    }</span>
+
+    private ProviderClient resolveClient(StorageProvider provider) {
+<span class="fc" id="L624">        ProviderClient client = providers.get(provider);</span>
+<span class="pc bpc" id="L625" title="1 of 2 branches missed.">        if (client == null) {</span>
+<span class="nc" id="L626">            throw new ObjectStorageException(&quot;Provider is not configured: &quot; + provider);</span>
+        }
+<span class="fc" id="L628">        return client;</span>
+    }
+
+    private ResolvedTarget resolveTarget(StorageProvider providerOverride, String bucketOverride) {
+<span class="fc bfc" id="L632" title="All 2 branches covered.">        StorageProvider resolvedProvider = providerOverride == null ? defaultProvider : providerOverride;</span>
+<span class="fc" id="L633">        String resolvedBucket = ValidationUtils.normalizeToNull(bucketOverride);</span>
+<span class="fc bfc" id="L634" title="All 2 branches covered.">        if (resolvedBucket == null) {</span>
+<span class="fc" id="L635">            resolvedBucket = defaultBucket;</span>
+        }
+<span class="pc bpc" id="L637" title="1 of 2 branches missed.">        if (!providers.containsKey(resolvedProvider)) {</span>
+<span class="nc" id="L638">            throw new ObjectStorageException(&quot;Provider is not configured: &quot; + resolvedProvider);</span>
+        }
+<span class="fc" id="L640">        return new ResolvedTarget(resolvedProvider, resolvedBucket);</span>
+    }
+
+    private void acquireSavePermit() {
+        try {
+<span class="fc" id="L645">            saveSemaphore.acquire();</span>
+<span class="nc" id="L646">        } catch (InterruptedException ex) {</span>
+<span class="nc" id="L647">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L648">            throw new ObjectStorageException(&quot;Save operation interrupted while waiting for upload slot&quot;, ex);</span>
+<span class="fc" id="L649">        }</span>
+<span class="fc" id="L650">    }</span>
+
+    private &lt;T, R&gt; List&lt;R&gt; processInBatches(
+            List&lt;T&gt; requests,
+            Function&lt;T, R&gt; processor,
+            String operation,
+            boolean validateRequests
+    ) {
+<span class="pc bpc" id="L658" title="1 of 2 branches missed.">        List&lt;T&gt; validatedRequests = validateRequests ? validateBatchRequests(requests, operation) : requests;</span>
+<span class="fc bfc" id="L659" title="All 2 branches covered.">        if (validatedRequests.isEmpty()) {</span>
+<span class="fc" id="L660">            return List.of();</span>
+        }
+
+<span class="fc" id="L663">        List&lt;R&gt; results = new ArrayList&lt;&gt;(Collections.nCopies(validatedRequests.size(), null));</span>
+<span class="fc" id="L664">        try (ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {</span>
+<span class="fc bfc" id="L665" title="All 2 branches covered.">            for (int start = 0; start &lt; validatedRequests.size(); start += batchSize) {</span>
+<span class="fc" id="L666">                int end = Math.min(start + batchSize, validatedRequests.size());</span>
+<span class="fc" id="L667">                processChunk(validatedRequests, results, processor, operation, start, end, executorService);</span>
+            }
+        }
+<span class="fc" id="L670">        return List.copyOf(results);</span>
+    }
+
+    private &lt;T&gt; List&lt;T&gt; validateBatchRequests(List&lt;T&gt; requests, String operation) {
+<span class="fc" id="L674">        Objects.requireNonNull(requests, operation + &quot; requests must not be null&quot;);</span>
+<span class="fc bfc" id="L675" title="All 2 branches covered.">        if (requests.size() &gt; maxBatchItems) {</span>
+<span class="fc" id="L676">            throw new IllegalArgumentException(</span>
+<span class="fc" id="L677">                    operation + &quot; batch contains &quot; + requests.size()</span>
+                            + &quot; items, which exceeds configured maxBatchItems=&quot; + maxBatchItems
+            );
+        }
+
+<span class="fc" id="L682">        List&lt;T&gt; validatedRequests = new ArrayList&lt;&gt;(requests.size());</span>
+<span class="fc bfc" id="L683" title="All 2 branches covered.">        for (int index = 0; index &lt; requests.size(); index++) {</span>
+<span class="fc" id="L684">            T request = requests.get(index);</span>
+<span class="fc bfc" id="L685" title="All 2 branches covered.">            if (request == null) {</span>
+<span class="fc" id="L686">                throw new IllegalArgumentException(operation + &quot; request at index &quot; + index + &quot; must not be null&quot;);</span>
+            }
+<span class="fc" id="L688">            validatedRequests.add(request);</span>
+        }
+<span class="fc" id="L690">        return List.copyOf(validatedRequests);</span>
+    }
+
+    private &lt;T, R&gt; void processChunk(
+            List&lt;T&gt; requests,
+            List&lt;R&gt; results,
+            Function&lt;T, R&gt; processor,
+            String operation,
+            int startInclusive,
+            int endExclusive,
+            ExecutorService executorService
+    ) {
+<span class="fc" id="L702">        LOGGER.debug(</span>
+                &quot;Starting {} chunk: provider={}, bucket={}, startIndex={}, endExclusive={}, chunkItemCount={}, maxConcurrentBatchItems={}&quot;,
+                operation,
+                defaultProvider,
+                defaultBucket,
+<span class="fc" id="L707">                startInclusive,</span>
+<span class="fc" id="L708">                endExclusive,</span>
+<span class="fc" id="L709">                endExclusive - startInclusive,</span>
+<span class="fc" id="L710">                maxConcurrentBatchItems</span>
+        );
+<span class="fc" id="L712">        Semaphore batchSemaphore = new Semaphore(maxConcurrentBatchItems, true);</span>
+<span class="fc" id="L713">        List&lt;Future&lt;IndexedResult&lt;R&gt;&gt;&gt; futures = new ArrayList&lt;&gt;(endExclusive - startInclusive);</span>
+
+<span class="fc bfc" id="L715" title="All 2 branches covered.">        for (int index = startInclusive; index &lt; endExclusive; index++) {</span>
+<span class="fc" id="L716">            int requestIndex = index;</span>
+<span class="fc" id="L717">            T request = requests.get(index);</span>
+<span class="fc" id="L718">            futures.add(executorService.submit(</span>
+<span class="fc" id="L719">                    () -&gt; processItem(requestIndex, request, processor, operation, batchSemaphore)</span>
+            ));
+        }
+
+<span class="fc bfc" id="L723" title="All 2 branches covered.">        for (Future&lt;IndexedResult&lt;R&gt;&gt; future : futures) {</span>
+            try {
+<span class="fc" id="L725">                IndexedResult&lt;R&gt; result = future.get();</span>
+<span class="fc" id="L726">                results.set(result.index(), result.value());</span>
+<span class="nc" id="L727">            } catch (InterruptedException ex) {</span>
+<span class="nc" id="L728">                Thread.currentThread().interrupt();</span>
+<span class="nc" id="L729">                cancelPending(futures);</span>
+<span class="nc" id="L730">                throw new ObjectStorageException(BATCH_PREFIX + operation + &quot; interrupted&quot;, ex);</span>
+<span class="nc" id="L731">            } catch (ExecutionException ex) {</span>
+<span class="nc" id="L732">                cancelPending(futures);</span>
+<span class="nc" id="L733">                Throwable cause = ex.getCause();</span>
+<span class="nc bnc" id="L734" title="All 2 branches missed.">                if (cause instanceof ObjectStorageException objectStorageException) {</span>
+<span class="nc" id="L735">                    throw objectStorageException;</span>
+                }
+<span class="nc" id="L737">                throw new ObjectStorageException(BATCH_PREFIX + operation + &quot; failed&quot;, cause);</span>
+<span class="fc" id="L738">            }</span>
+<span class="fc" id="L739">        }</span>
+<span class="fc" id="L740">        LOGGER.debug(</span>
+                &quot;Completed {} chunk: provider={}, bucket={}, startIndex={}, endExclusive={}&quot;,
+                operation,
+                defaultProvider,
+                defaultBucket,
+<span class="fc" id="L745">                startInclusive,</span>
+<span class="fc" id="L746">                endExclusive</span>
+        );
+<span class="fc" id="L748">    }</span>
+
+    private &lt;T, R&gt; IndexedResult&lt;R&gt; processItem(
+            int index,
+            T request,
+            Function&lt;T, R&gt; processor,
+            String operation,
+            Semaphore batchSemaphore
+    ) {
+<span class="fc" id="L757">        acquireBatchPermit(operation, index, batchSemaphore);</span>
+        try {
+<span class="fc" id="L759">            String requestSummary = describeRequest(request);</span>
+<span class="fc" id="L760">            LOGGER.debug(</span>
+                    &quot;Processing {} item: provider={}, bucket={}, index={}, request={}&quot;,
+                    operation,
+                    defaultProvider,
+                    defaultBucket,
+<span class="fc" id="L765">                    index,</span>
+                    requestSummary
+            );
+<span class="fc" id="L768">            return new IndexedResult&lt;&gt;(index, processor.apply(request));</span>
+<span class="nc" id="L769">        } catch (RuntimeException ex) {</span>
+<span class="nc" id="L770">            throw createBatchFailure(operationFailureMessage(operation, index, request), ex);</span>
+        } finally {
+<span class="fc" id="L772">            batchSemaphore.release();</span>
+        }
+    }
+
+    private void acquireBatchPermit(String operation, int index, Semaphore batchSemaphore) {
+        try {
+<span class="fc" id="L778">            batchSemaphore.acquire();</span>
+<span class="nc" id="L779">        } catch (InterruptedException ex) {</span>
+<span class="nc" id="L780">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L781">            throw new ObjectStorageException(</span>
+                    BATCH_PREFIX + operation + &quot; interrupted while waiting for item slot at index &quot; + index,
+                    ex
+            );
+<span class="fc" id="L785">        }</span>
+<span class="fc" id="L786">    }</span>
+
+    private void cancelPending(List&lt;? extends Future&lt;?&gt;&gt; futures) {
+<span class="nc bnc" id="L789" title="All 2 branches missed.">        for (Future&lt;?&gt; future : futures) {</span>
+<span class="nc bnc" id="L790" title="All 2 branches missed.">            if (!future.isDone()) {</span>
+<span class="nc" id="L791">                future.cancel(true);</span>
+            }
+<span class="nc" id="L793">        }</span>
+<span class="nc" id="L794">    }</span>
+
+    private String describeRequest(Object request) {
+<span class="fc bfc" id="L797" title="All 2 branches covered.">        if (request instanceof UploadFileRequest uploadFileRequest) {</span>
+<span class="fc" id="L798">            ResolvedTarget target = resolveTarget(uploadFileRequest.provider(), uploadFileRequest.bucket());</span>
+<span class="fc" id="L799">            return target.provider() + &quot;:&quot; + target.bucket() + &quot;/&quot; + uploadFileRequest.key();</span>
+        }
+<span class="fc bfc" id="L801" title="All 2 branches covered.">        if (request instanceof GetFileRequest getFileRequest) {</span>
+<span class="fc" id="L802">            ResolvedTarget target = resolveTarget(getFileRequest.provider(), getFileRequest.bucket());</span>
+<span class="fc" id="L803">            return target.provider() + &quot;:&quot; + target.bucket() + &quot;/&quot; + getFileRequest.key();</span>
+        }
+<span class="fc bfc" id="L805" title="All 2 branches covered.">        if (request instanceof DeleteFileRequest deleteFileRequest) {</span>
+<span class="fc" id="L806">            ResolvedTarget target = resolveTarget(deleteFileRequest.provider(), deleteFileRequest.bucket());</span>
+<span class="fc" id="L807">            return target.provider() + &quot;:&quot; + target.bucket() + &quot;/&quot; + deleteFileRequest.key();</span>
+        }
+<span class="fc bfc" id="L809" title="All 2 branches covered.">        if (request instanceof CopyFileRequest copyFileRequest) {</span>
+<span class="fc" id="L810">            ResolvedTarget sourceTarget = resolveTarget(copyFileRequest.sourceProvider(), copyFileRequest.sourceBucket());</span>
+<span class="fc" id="L811">            ResolvedTarget targetTarget = resolveTarget(copyFileRequest.targetProvider(), copyFileRequest.targetBucket());</span>
+<span class="fc" id="L812">            return sourceTarget.provider() + &quot;:&quot; + sourceTarget.bucket() + &quot;/&quot; + copyFileRequest.sourceKey()</span>
+<span class="fc" id="L813">                    + &quot; -&gt; &quot; + targetTarget.provider() + &quot;:&quot; + targetTarget.bucket() + &quot;/&quot; + copyFileRequest.targetKey();</span>
+        }
+<span class="pc bpc" id="L815" title="1 of 2 branches missed.">        if (request instanceof MoveFileRequest moveFileRequest) {</span>
+<span class="fc" id="L816">            ResolvedTarget sourceTarget = resolveTarget(moveFileRequest.sourceProvider(), moveFileRequest.sourceBucket());</span>
+<span class="fc" id="L817">            ResolvedTarget targetTarget = resolveTarget(moveFileRequest.targetProvider(), moveFileRequest.targetBucket());</span>
+<span class="fc" id="L818">            return sourceTarget.provider() + &quot;:&quot; + sourceTarget.bucket() + &quot;/&quot; + moveFileRequest.sourceKey()</span>
+<span class="fc" id="L819">                    + &quot; -&gt; &quot; + targetTarget.provider() + &quot;:&quot; + targetTarget.bucket() + &quot;/&quot; + moveFileRequest.targetKey();</span>
+        }
+<span class="nc" id="L821">        return String.valueOf(request);</span>
+    }
+
+    private List&lt;ResolvedSaveRequest&gt; resolveSaveRequests(List&lt;UploadFileRequest&gt; requests) {
+<span class="fc bfc" id="L825" title="All 2 branches covered.">        if (requests.isEmpty()) {</span>
+<span class="fc" id="L826">            return List.of();</span>
+        }
+
+<span class="fc" id="L829">        String savePrefix = buildSavePrefix();</span>
+<span class="fc" id="L830">        Set&lt;String&gt; usedKeys = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L831">        List&lt;ResolvedSaveRequest&gt; resolvedRequests = new ArrayList&lt;&gt;(requests.size());</span>
+
+<span class="fc bfc" id="L833" title="All 2 branches covered.">        for (int index = 0; index &lt; requests.size(); index++) {</span>
+<span class="fc" id="L834">            UploadFileRequest originalRequest = requests.get(index);</span>
+<span class="fc" id="L835">            ResolvedTarget target = resolveTarget(originalRequest.provider(), originalRequest.bucket());</span>
+<span class="fc" id="L836">            validateSaveRequest(originalRequest);</span>
+<span class="fc" id="L837">            String normalizedOriginalKey = normalizeUserKey(originalRequest.key());</span>
+<span class="fc" id="L838">            String candidateKey = appendPath(savePrefix, normalizedOriginalKey);</span>
+<span class="fc" id="L839">            String storedKey = ensureUniqueKey(candidateKey, usedKeys);</span>
+
+<span class="fc" id="L841">            UploadFileRequest storedRequest = new UploadFileRequest(</span>
+                    storedKey,
+<span class="fc" id="L843">                    originalRequest.content(),</span>
+<span class="fc" id="L844">                    originalRequest.contentType(),</span>
+<span class="fc" id="L845">                    originalRequest.metadata(),</span>
+<span class="fc" id="L846">                    target.provider(),</span>
+<span class="fc" id="L847">                    target.bucket()</span>
+            );
+<span class="fc" id="L849">            resolvedRequests.add(new ResolvedSaveRequest(originalRequest, storedRequest, normalizedOriginalKey, target));</span>
+<span class="fc" id="L850">            String originalKey = originalRequest.key();</span>
+<span class="pc bpc" id="L851" title="1 of 2 branches missed.">            if (LOGGER.isDebugEnabled()) {</span>
+<span class="nc" id="L852">                StorageProvider resolvedProvider = target.provider();</span>
+<span class="nc" id="L853">                String resolvedBucket = target.bucket();</span>
+<span class="nc" id="L854">                LOGGER.debug(</span>
+                        &quot;Resolved save key: provider={}, bucket={}, originalKey={}, storedKey={}&quot;,
+                        resolvedProvider,
+                        resolvedBucket,
+                        originalKey,
+                        storedKey
+                );
+            }
+        }
+
+<span class="fc" id="L864">        return List.copyOf(resolvedRequests);</span>
+    }
+
+    private void validateSaveRequest(UploadFileRequest request) {
+<span class="fc" id="L868">        String normalizedOriginalKey = normalizeUserKey(request.key());</span>
+<span class="fc bfc" id="L869" title="All 2 branches covered.">        if (allowedFileExtensions != null) {</span>
+<span class="fc" id="L870">            String extension = extractExtension(normalizedOriginalKey);</span>
+<span class="pc bpc" id="L871" title="1 of 2 branches missed.">            if (!allowedFileExtensions.contains(extension)) {</span>
+<span class="fc" id="L872">                throw new IllegalArgumentException(</span>
+                        &quot;file extension '&quot; + extension + &quot;' is not allowed; allowedFileExtensions=&quot; + allowedFileExtensions
+                );
+            }
+        }
+<span class="pc bpc" id="L877" title="1 of 4 branches missed.">        if (maxFileSizeBytes != null &amp;&amp; request.content().length &gt; maxFileSizeBytes) {</span>
+<span class="fc" id="L878">            throw new IllegalArgumentException(</span>
+<span class="fc" id="L879">                    &quot;file size &quot; + request.content().length + &quot; bytes exceeds maxFileSizeBytes=&quot; + maxFileSizeBytes</span>
+            );
+        }
+<span class="fc" id="L882">    }</span>
+
+    private String extractExtension(String normalizedKey) {
+<span class="fc" id="L885">        String filename = extractFilename(normalizedKey);</span>
+<span class="fc" id="L886">        int dotIndex = filename.lastIndexOf('.');</span>
+<span class="pc bpc" id="L887" title="2 of 4 branches missed.">        if (dotIndex &lt;= 0 || dotIndex == filename.length() - 1) {</span>
+<span class="nc" id="L888">            throw new IllegalArgumentException(&quot;file extension is required for key: &quot; + normalizedKey);</span>
+        }
+<span class="fc" id="L890">        return filename.substring(dotIndex + 1).toLowerCase(java.util.Locale.ROOT);</span>
+    }
+
+    private String buildSavePrefix() {
+<span class="fc" id="L894">        String timestampPath = SAVE_PATH_FORMATTER.format(ZonedDateTime.now(clock.withZone(timeZone)));</span>
+<span class="fc" id="L895">        return appendPath(basePath, timestampPath);</span>
+    }
+
+    private String ensureUniqueKey(String candidateKey, Set&lt;String&gt; usedKeys) {
+<span class="fc bfc" id="L899" title="All 2 branches covered.">        if (usedKeys.add(candidateKey)) {</span>
+<span class="fc" id="L900">            return candidateKey;</span>
+        }
+
+<span class="fc" id="L903">        String parentPath = parentPath(candidateKey);</span>
+<span class="fc" id="L904">        String filename = extractFilename(candidateKey);</span>
+<span class="fc" id="L905">        int counter = 1;</span>
+        String renamedKey;
+        do {
+<span class="fc" id="L908">            renamedKey = appendPath(parentPath, counter + &quot;_&quot; + filename);</span>
+<span class="fc" id="L909">            counter++;</span>
+<span class="fc bfc" id="L910" title="All 2 branches covered.">        } while (!usedKeys.add(renamedKey));</span>
+<span class="fc" id="L911">        return renamedKey;</span>
+    }
+
+    private String normalizeUserKey(String key) {
+<span class="fc" id="L915">        String normalizedKey = normalizePath(key);</span>
+<span class="pc bpc" id="L916" title="1 of 2 branches missed.">        if (normalizedKey == null) {</span>
+<span class="nc" id="L917">            throw new IllegalArgumentException(&quot;key must not be blank&quot;);</span>
+        }
+<span class="fc" id="L919">        extractFilename(normalizedKey);</span>
+<span class="fc" id="L920">        return normalizedKey;</span>
+    }
+
+    private String normalizePath(String path) {
+<span class="pc bpc" id="L924" title="1 of 4 branches missed.">        if (path == null || path.isBlank()) {</span>
+<span class="fc" id="L925">            return null;</span>
+        }
+
+<span class="fc" id="L928">        String[] rawSegments = path.trim().replace('\\', '/').split(&quot;/&quot;);</span>
+<span class="fc" id="L929">        List&lt;String&gt; normalizedSegments = new ArrayList&lt;&gt;(rawSegments.length);</span>
+<span class="fc bfc" id="L930" title="All 2 branches covered.">        for (String rawSegment : rawSegments) {</span>
+<span class="pc bpc" id="L931" title="1 of 2 branches missed.">            if (!rawSegment.isBlank()) {</span>
+<span class="fc" id="L932">                normalizedSegments.add(rawSegment.trim());</span>
+            }
+        }
+
+<span class="pc bpc" id="L936" title="1 of 2 branches missed.">        if (normalizedSegments.isEmpty()) {</span>
+<span class="nc" id="L937">            return null;</span>
+        }
+<span class="fc" id="L939">        return String.join(&quot;/&quot;, normalizedSegments);</span>
+    }
+
+    private String appendPath(String left, String right) {
+<span class="fc" id="L943">        String normalizedLeft = normalizePath(left);</span>
+<span class="fc" id="L944">        String normalizedRight = normalizePath(right);</span>
+<span class="pc bpc" id="L945" title="1 of 2 branches missed.">        if (normalizedLeft == null) {</span>
+<span class="nc" id="L946">            return normalizedRight;</span>
+        }
+<span class="pc bpc" id="L948" title="1 of 2 branches missed.">        if (normalizedRight == null) {</span>
+<span class="nc" id="L949">            return normalizedLeft;</span>
+        }
+<span class="fc" id="L951">        return normalizedLeft + &quot;/&quot; + normalizedRight;</span>
+    }
+
+    private String parentPath(String key) {
+<span class="fc" id="L955">        int lastSlash = key.lastIndexOf('/');</span>
+<span class="pc bpc" id="L956" title="1 of 2 branches missed.">        return lastSlash &gt;= 0 ? key.substring(0, lastSlash) : null;</span>
+    }
+
+    private String extractFilename(String key) {
+<span class="fc" id="L960">        int lastSlash = key.lastIndexOf('/');</span>
+<span class="fc bfc" id="L961" title="All 2 branches covered.">        String filename = lastSlash &gt;= 0 ? key.substring(lastSlash + 1) : key;</span>
+<span class="pc bpc" id="L962" title="1 of 2 branches missed.">        if (filename.isBlank()) {</span>
+<span class="nc" id="L963">            throw new IllegalArgumentException(&quot;key must reference a file name&quot;);</span>
+        }
+<span class="fc" id="L965">        return filename;</span>
+    }
+
+    private SaveChunkState submitInitialSaveItems(
+            CompletionService&lt;IndexedResult&lt;StoredObject&gt;&gt; completionService,
+            List&lt;ResolvedSaveRequest&gt; requests,
+            int startInclusive,
+            int endExclusive
+    ) {
+<span class="fc" id="L974">        SaveChunkState state = new SaveChunkState(startInclusive, 0);</span>
+<span class="fc bfc" id="L975" title="All 4 branches covered.">        while (state.hasRemainingItems(endExclusive) &amp;&amp; state.inFlight() &lt; maxConcurrentBatchItems) {</span>
+<span class="fc" id="L976">            submitSaveItem(completionService, state.nextIndex(), requests.get(state.nextIndex()));</span>
+<span class="fc" id="L977">            state = state.onItemSubmitted();</span>
+        }
+<span class="fc" id="L979">        return state;</span>
+    }
+
+    private ObjectStorageException createBatchFailure(String message, RuntimeException cause) {
+<span class="pc bpc" id="L983" title="1 of 2 branches missed.">        return cause instanceof ObjectStorageException objectStorageException</span>
+<span class="fc" id="L984">                ? new ObjectStorageException(message, objectStorageException)</span>
+<span class="nc" id="L985">                : new ObjectStorageException(message, cause);</span>
+    }
+
+    private ObjectStorageException toObjectStorageException(String message, Throwable cause) {
+<span class="pc bpc" id="L989" title="1 of 2 branches missed.">        return cause instanceof ObjectStorageException objectStorageException</span>
+<span class="fc" id="L990">                ? objectStorageException</span>
+<span class="nc" id="L991">                : new ObjectStorageException(message, cause);</span>
+    }
+
+    private String operationFailureMessage(int index, UploadFileRequest request) {
+<span class="fc" id="L995">        return BATCH_PREFIX + &quot;save failed at index &quot; + index + &quot; (&quot; + describeRequest(request) + &quot;)&quot;;</span>
+    }
+
+    private String operationFailureMessage(String operation, int index, Object request) {
+<span class="nc" id="L999">        return BATCH_PREFIX + operation + &quot; failed at index &quot; + index + &quot; (&quot; + describeRequest(request) + &quot;)&quot;;</span>
+    }
+
+    private String summarizeFailure(Throwable failure) {
+<span class="nc" id="L1003">        Throwable rootCause = rootCause(failure);</span>
+<span class="nc" id="L1004">        String rootType = rootCause.getClass().getSimpleName();</span>
+<span class="nc" id="L1005">        String rootMessage = rootCause.getMessage();</span>
+<span class="nc bnc" id="L1006" title="All 4 branches missed.">        if (rootMessage == null || rootMessage.isBlank()) {</span>
+<span class="nc" id="L1007">            return rootType;</span>
+        }
+<span class="nc" id="L1009">        return rootType + &quot;: &quot; + rootMessage;</span>
+    }
+
+    private Throwable rootCause(Throwable failure) {
+<span class="nc" id="L1013">        Throwable root = Objects.requireNonNull(failure, &quot;failure must not be null&quot;);</span>
+<span class="nc bnc" id="L1014" title="All 4 branches missed.">        while (root.getCause() != null &amp;&amp; root.getCause() != root) {</span>
+<span class="nc" id="L1015">            root = root.getCause();</span>
+        }
+<span class="nc" id="L1017">        return root;</span>
+    }
+
+<span class="fc" id="L1020">    private record IndexedResult&lt;R&gt;(int index, R value) {</span>
+    }
+
+<span class="fc" id="L1023">    public record ServiceSettings(</span>
+            int batchSize,
+            int maxConcurrentBatchItems,
+            int maxBatchItems,
+            Integer defaultListMaxResults,
+            Set&lt;String&gt; allowedFileExtensions,
+            Long maxFileSizeBytes,
+            String basePath,
+            ZoneId timeZone,
+            Clock clock
+    ) {
+        static ServiceSettings defaultSettings() {
+<span class="fc" id="L1035">            ZoneId zoneId = ObjectStorageServiceBuilder.DEFAULT_TIME_ZONE;</span>
+<span class="fc" id="L1036">            return new ServiceSettings(</span>
+                    ObjectStorageServiceBuilder.DEFAULT_BATCH_SIZE,
+                    ObjectStorageServiceBuilder.DEFAULT_MAX_CONCURRENT_BATCH_ITEMS,
+                    ObjectStorageServiceBuilder.DEFAULT_MAX_BATCH_ITEMS,
+                    ObjectStorageServiceBuilder.DEFAULT_LIST_MAX_RESULTS,
+                    null,
+                    null,
+                    null,
+                    zoneId,
+<span class="fc" id="L1045">                    Clock.system(zoneId)</span>
+            );
+        }
+    }
+
+<span class="fc" id="L1050">    private record SaveChunkState(int nextIndex, int inFlight) {</span>
+        private SaveChunkState onItemSubmitted() {
+<span class="fc" id="L1052">            return new SaveChunkState(nextIndex + 1, inFlight + 1);</span>
+        }
+
+        private SaveChunkState onItemCompleted() {
+<span class="fc" id="L1056">            return new SaveChunkState(nextIndex, inFlight - 1);</span>
+        }
+
+        private boolean hasRemainingItems(int endExclusive) {
+<span class="fc bfc" id="L1060" title="All 2 branches covered.">            return nextIndex &lt; endExclusive;</span>
+        }
+    }
+
+<span class="fc" id="L1064">    private record ResolvedSaveRequest(</span>
+            UploadFileRequest originalRequest,
+            UploadFileRequest storedRequest,
+            String normalizedOriginalKey,
+            ResolvedTarget target
+    ) {
+    }
+
+<span class="fc" id="L1072">    private record ResolvedTarget(StorageProvider provider, String bucket) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

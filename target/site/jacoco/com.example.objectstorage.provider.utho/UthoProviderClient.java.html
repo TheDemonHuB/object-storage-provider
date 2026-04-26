@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UthoProviderClient.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Object Storage Library</a> &gt; <a href="index.source.html" class="el_package">com.example.objectstorage.provider.utho</a> &gt; <span class="el_source">UthoProviderClient.java</span></div><h1>UthoProviderClient.java</h1><pre class="source lang-java linenums">package com.example.objectstorage.provider.utho;
+
+import com.example.objectstorage.api.StorageProvider;
+import com.example.objectstorage.api.request.DeleteFileRequest;
+import com.example.objectstorage.api.request.GetFileRequest;
+import com.example.objectstorage.api.request.ListFilesRequest;
+import com.example.objectstorage.api.request.UploadFileRequest;
+import com.example.objectstorage.api.response.RetrievedObject;
+import com.example.objectstorage.api.response.StorageObjectInfo;
+import com.example.objectstorage.api.response.StoredObject;
+import com.example.objectstorage.config.UthoStorageConfig;
+import com.example.objectstorage.core.ProviderClient;
+import com.example.objectstorage.core.ProviderClientSupport;
+import io.minio.GetObjectArgs;
+import io.minio.GetObjectResponse;
+import io.minio.ListObjectsArgs;
+import io.minio.MinioClient;
+import io.minio.ObjectWriteResponse;
+import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
+import io.minio.Result;
+import io.minio.messages.Item;
+import java.io.ByteArrayInputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import okhttp3.Headers;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public final class UthoProviderClient implements ProviderClient {
+    private static final String USER_META_PREFIX = &quot;x-amz-meta-&quot;;
+<span class="fc" id="L36">    private static final Logger LOGGER = LoggerFactory.getLogger(UthoProviderClient.class);</span>
+    private static final String BUCKET_FIELD = &quot;bucket&quot;;
+
+    private final MinioClient minioClient;
+<span class="pc" id="L40">    private final ProviderClientSupport operations = new ProviderClientSupport(&quot;Utho&quot;, BUCKET_FIELD);</span>
+
+<span class="nc" id="L42">    public UthoProviderClient(UthoStorageConfig config) {</span>
+<span class="nc" id="L43">        Objects.requireNonNull(config, &quot;config must not be null&quot;);</span>
+<span class="nc" id="L44">        this.minioClient = MinioClient.builder()</span>
+<span class="nc" id="L45">                .endpoint(config.endpoint())</span>
+<span class="nc" id="L46">                .credentials(config.accessKey(), config.secretKey())</span>
+<span class="nc" id="L47">                .region(config.region())</span>
+<span class="nc" id="L48">                .build();</span>
+<span class="nc" id="L49">    }</span>
+
+<span class="fc" id="L51">    UthoProviderClient(MinioClient minioClient) {</span>
+<span class="fc" id="L52">        this.minioClient = Objects.requireNonNull(minioClient, &quot;minioClient must not be null&quot;);</span>
+<span class="fc" id="L53">    }</span>
+
+    @Override
+    public StorageProvider provider() {
+<span class="fc" id="L57">        return StorageProvider.UTHO;</span>
+    }
+
+    @Override
+    public StoredObject saveFile(String bucket, UploadFileRequest request) {
+<span class="fc" id="L62">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="fc" id="L63">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="fc" id="L64">        String key = request.key();</span>
+<span class="fc" id="L65">        return operations.executeKeyOperation(LOGGER, &quot;upload&quot;, targetBucket, key, () -&gt; {</span>
+<span class="fc" id="L66">            try (ByteArrayInputStream inputStream = new ByteArrayInputStream(request.content())) {</span>
+<span class="fc" id="L67">                PutObjectArgs.Builder putObjectArgs = PutObjectArgs.builder()</span>
+<span class="fc" id="L68">                        .bucket(targetBucket)</span>
+<span class="fc" id="L69">                        .object(key)</span>
+<span class="fc" id="L70">                        .stream(inputStream, request.content().length, -1);</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">                if (request.contentType() != null) {</span>
+<span class="fc" id="L72">                    putObjectArgs.contentType(request.contentType());</span>
+                }
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">                if (!request.metadata().isEmpty()) {</span>
+<span class="fc" id="L75">                    putObjectArgs.userMetadata(request.metadata());</span>
+                }
+
+<span class="fc" id="L78">                ObjectWriteResponse response = minioClient.putObject(putObjectArgs.build());</span>
+<span class="fc" id="L79">                StoredObject storedObject = new StoredObject(</span>
+<span class="fc" id="L80">                        provider(),</span>
+                        targetBucket,
+                        key,
+<span class="fc" id="L83">                        response.etag(),</span>
+<span class="fc" id="L84">                        response.versionId()</span>
+                );
+<span class="fc" id="L86">                LOGGER.info(&quot;Utho upload completed: bucket={}, key={}&quot;, targetBucket, key);</span>
+<span class="fc" id="L87">                return storedObject;</span>
+<span class="nc" id="L88">            } catch (Exception ex) {</span>
+<span class="nc" id="L89">                throw new com.example.objectstorage.core.ObjectStorageException(</span>
+                        &quot;Utho upload failed for bucket/key: &quot; + targetBucket + &quot;/&quot; + key,
+                        ex
+                );
+            }
+        });
+    }
+
+    @Override
+    public RetrievedObject getFile(String bucket, GetFileRequest request) {
+<span class="fc" id="L99">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="fc" id="L100">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="fc" id="L101">        String key = request.key();</span>
+<span class="fc" id="L102">        return operations.executeKeyOperation(LOGGER, &quot;download&quot;, targetBucket, key, () -&gt; {</span>
+<span class="fc" id="L103">            try (GetObjectResponse response = minioClient.getObject(</span>
+<span class="fc" id="L104">                    GetObjectArgs.builder()</span>
+<span class="fc" id="L105">                            .bucket(targetBucket)</span>
+<span class="fc" id="L106">                            .object(key)</span>
+<span class="fc" id="L107">                            .build())</span>
+            ) {
+<span class="fc" id="L109">                byte[] bytes = response.readAllBytes();</span>
+<span class="fc" id="L110">                Headers headers = response.headers();</span>
+<span class="fc" id="L111">                String contentType = headers.get(&quot;Content-Type&quot;);</span>
+
+<span class="fc" id="L113">                long size = bytes.length;</span>
+<span class="fc" id="L114">                String contentLengthHeader = headers.get(&quot;Content-Length&quot;);</span>
+<span class="pc bpc" id="L115" title="2 of 4 branches missed.">                if (contentLengthHeader != null &amp;&amp; !contentLengthHeader.isBlank()) {</span>
+<span class="fc" id="L116">                    size = Long.parseLong(contentLengthHeader);</span>
+                }
+
+<span class="fc" id="L119">                RetrievedObject retrievedObject = new RetrievedObject(</span>
+<span class="fc" id="L120">                        provider(),</span>
+                        targetBucket,
+                        key,
+                        bytes,
+                        contentType,
+<span class="fc" id="L125">                        extractUserMetadata(headers),</span>
+                        size
+                );
+<span class="fc" id="L128">                LOGGER.info(&quot;Utho download completed: bucket={}, key={}, size={}&quot;, targetBucket, key, size);</span>
+<span class="fc" id="L129">                return retrievedObject;</span>
+<span class="nc" id="L130">            } catch (Exception ex) {</span>
+<span class="nc" id="L131">                throw new com.example.objectstorage.core.ObjectStorageException(</span>
+                        &quot;Utho download failed for bucket/key: &quot; + targetBucket + &quot;/&quot; + key,
+                        ex
+                );
+            }
+        });
+    }
+
+    @Override
+    public void deleteFile(String bucket, DeleteFileRequest request) {
+<span class="fc" id="L141">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="fc" id="L142">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="fc" id="L143">        String key = request.key();</span>
+<span class="fc" id="L144">        operations.executeVoidKeyOperation(LOGGER, &quot;delete&quot;, targetBucket, key, () -&gt; {</span>
+            try {
+<span class="fc" id="L146">                minioClient.removeObject(</span>
+<span class="fc" id="L147">                        RemoveObjectArgs.builder()</span>
+<span class="fc" id="L148">                                .bucket(targetBucket)</span>
+<span class="fc" id="L149">                                .object(key)</span>
+<span class="fc" id="L150">                                .build()</span>
+                );
+<span class="fc" id="L152">                LOGGER.info(&quot;Utho delete completed: bucket={}, key={}&quot;, targetBucket, key);</span>
+<span class="nc" id="L153">            } catch (Exception ex) {</span>
+<span class="nc" id="L154">                throw new com.example.objectstorage.core.ObjectStorageException(</span>
+                        &quot;Utho delete failed for bucket/key: &quot; + targetBucket + &quot;/&quot; + key,
+                        ex
+                );
+<span class="fc" id="L158">            }</span>
+<span class="fc" id="L159">        });</span>
+<span class="fc" id="L160">    }</span>
+
+    @Override
+    public List&lt;StorageObjectInfo&gt; listFiles(String bucket, ListFilesRequest request) {
+<span class="fc" id="L164">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="fc" id="L165">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="fc" id="L166">        String prefix = request.prefix();</span>
+<span class="fc" id="L167">        Integer maxResults = request.maxResults();</span>
+<span class="fc" id="L168">        return operations.executeListOperation(LOGGER, targetBucket, prefix, maxResults, () -&gt; {</span>
+            try {
+<span class="fc" id="L170">                ListObjectsArgs.Builder listObjectsArgs = ListObjectsArgs.builder()</span>
+<span class="fc" id="L171">                        .bucket(targetBucket)</span>
+<span class="fc" id="L172">                        .recursive(true);</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">                if (prefix != null) {</span>
+<span class="fc" id="L174">                    listObjectsArgs.prefix(prefix);</span>
+                }
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">                if (maxResults != null) {</span>
+<span class="fc" id="L177">                    listObjectsArgs.maxKeys(maxResults);</span>
+                }
+
+<span class="fc" id="L180">                List&lt;StorageObjectInfo&gt; objects = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L181">                Iterable&lt;Result&lt;Item&gt;&gt; results = minioClient.listObjects(listObjectsArgs.build());</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">                for (Result&lt;Item&gt; result : results) {</span>
+<span class="fc" id="L183">                    Item item = result.get();</span>
+<span class="pc bpc" id="L184" title="2 of 6 branches missed.">                    if (addItemIfFile(item, objects) &amp;&amp; maxResults != null &amp;&amp; objects.size() &gt;= maxResults) {</span>
+<span class="nc" id="L185">                        return completeList(targetBucket, objects);</span>
+                    }
+<span class="fc" id="L187">                }</span>
+<span class="fc" id="L188">                return completeList(targetBucket, objects);</span>
+<span class="nc" id="L189">            } catch (Exception ex) {</span>
+<span class="nc" id="L190">                throw new com.example.objectstorage.core.ObjectStorageException(</span>
+                        &quot;Utho list failed for bucket: &quot; + targetBucket,
+                        ex
+                );
+            }
+        });
+    }
+
+    private boolean addItemIfFile(Item item, List&lt;StorageObjectInfo&gt; objects) {
+<span class="fc" id="L199">        String key = item.objectName();</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">        if (isDirectoryMarker(key)) {</span>
+<span class="fc" id="L201">            return false;</span>
+        }
+<span class="fc" id="L203">        objects.add(new StorageObjectInfo(</span>
+                key,
+<span class="fc" id="L205">                item.size(),</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">                item.lastModified() == null ? null : item.lastModified().toInstant()</span>
+        ));
+<span class="fc" id="L208">        return true;</span>
+    }
+
+    private List&lt;StorageObjectInfo&gt; completeList(String bucket, List&lt;StorageObjectInfo&gt; objects) {
+<span class="fc" id="L212">        List&lt;StorageObjectInfo&gt; storageObjectInfos = List.copyOf(objects);</span>
+<span class="fc" id="L213">        int itemCount = storageObjectInfos.size();</span>
+<span class="fc" id="L214">        LOGGER.info(&quot;Utho list completed: bucket={}, itemCount={}&quot;, bucket, itemCount);</span>
+<span class="fc" id="L215">        return storageObjectInfos;</span>
+    }
+
+    private Map&lt;String, String&gt; extractUserMetadata(Headers headers) {
+<span class="fc" id="L219">        Map&lt;String, String&gt; metadata = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">        for (String headerName : headers.names()) {</span>
+<span class="fc" id="L221">            String normalized = headerName.toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">            if (normalized.startsWith(USER_META_PREFIX)) {</span>
+<span class="fc" id="L223">                String key = normalized.substring(USER_META_PREFIX.length());</span>
+<span class="fc" id="L224">                metadata.put(key, headers.get(headerName));</span>
+            }
+<span class="fc" id="L226">        }</span>
+<span class="fc" id="L227">        return Map.copyOf(metadata);</span>
+    }
+
+    private boolean isDirectoryMarker(String key) {
+<span class="pc bpc" id="L231" title="1 of 4 branches missed.">        return key != null &amp;&amp; key.endsWith(&quot;/&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

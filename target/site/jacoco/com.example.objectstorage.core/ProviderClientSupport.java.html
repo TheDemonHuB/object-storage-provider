@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ProviderClientSupport.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Object Storage Library</a> &gt; <a href="index.source.html" class="el_package">com.example.objectstorage.core</a> &gt; <span class="el_source">ProviderClientSupport.java</span></div><h1>ProviderClientSupport.java</h1><pre class="source lang-java linenums">package com.example.objectstorage.core;
+
+import com.example.objectstorage.api.response.StorageObjectInfo;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.Supplier;
+import org.slf4j.Logger;
+
+public final class ProviderClientSupport {
+    public static final String REQUEST_MUST_NOT_BE_NULL = &quot;request must not be null&quot;;
+
+    private final String providerName;
+    private final String bucketLabel;
+
+<span class="fc" id="L15">    public ProviderClientSupport(String providerName, String bucketLabel) {</span>
+<span class="fc" id="L16">        this.providerName = Objects.requireNonNull(providerName, &quot;providerName must not be null&quot;);</span>
+<span class="fc" id="L17">        this.bucketLabel = Objects.requireNonNull(bucketLabel, &quot;bucketLabel must not be null&quot;);</span>
+<span class="fc" id="L18">    }</span>
+
+    public &lt;T&gt; T executeKeyOperation(
+            Logger logger,
+            String operation,
+            String bucket,
+            String key,
+            Supplier&lt;T&gt; supplier
+    ) {
+<span class="fc" id="L27">        logger.debug(&quot;{} {} started: {}={}, key={}&quot;, providerName, operation, bucketLabel, bucket, key);</span>
+        try {
+<span class="fc" id="L29">            return supplier.get();</span>
+<span class="fc" id="L30">        } catch (ObjectStorageException ex) {</span>
+<span class="fc" id="L31">            throw ex;</span>
+<span class="fc" id="L32">        } catch (RuntimeException ex) {</span>
+<span class="fc" id="L33">            throw new ObjectStorageException(</span>
+                    providerName + &quot; &quot; + operation + &quot; failed for &quot; + bucketLabel + &quot;/key: &quot; + bucket + &quot;/&quot; + key,
+                    ex
+            );
+        }
+    }
+
+    public void executeVoidKeyOperation(
+            Logger logger,
+            String operation,
+            String bucket,
+            String key,
+            Runnable runnable
+    ) {
+<span class="fc" id="L47">        executeKeyOperation(logger, operation, bucket, key, () -&gt; {</span>
+<span class="fc" id="L48">            runnable.run();</span>
+<span class="fc" id="L49">            return null;</span>
+        });
+<span class="fc" id="L51">    }</span>
+
+    public List&lt;StorageObjectInfo&gt; executeListOperation(
+            Logger logger,
+            String bucket,
+            String prefix,
+            Integer maxResults,
+            Supplier&lt;List&lt;StorageObjectInfo&gt;&gt; supplier
+    ) {
+<span class="fc" id="L60">        logger.debug(</span>
+                &quot;{} list started: {}={}, prefix={}, maxResults={}&quot;,
+                providerName,
+                bucketLabel,
+                bucket,
+                prefix,
+                maxResults
+        );
+        try {
+<span class="fc" id="L69">            return supplier.get();</span>
+<span class="nc" id="L70">        } catch (ObjectStorageException ex) {</span>
+<span class="nc" id="L71">            throw ex;</span>
+<span class="fc" id="L72">        } catch (RuntimeException ex) {</span>
+<span class="fc" id="L73">            throw new ObjectStorageException(providerName + &quot; list failed for &quot; + bucketLabel + &quot;: &quot; + bucket, ex);</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

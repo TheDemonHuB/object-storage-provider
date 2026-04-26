@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CopyFileRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Object Storage Library</a> &gt; <a href="index.source.html" class="el_package">com.example.objectstorage.api.request</a> &gt; <span class="el_source">CopyFileRequest.java</span></div><h1>CopyFileRequest.java</h1><pre class="source lang-java linenums">package com.example.objectstorage.api.request;
+
+import com.example.objectstorage.api.StorageProvider;
+import com.example.objectstorage.core.ValidationUtils;
+
+public record CopyFileRequest(
+        String sourceKey,
+        String targetKey,
+        StorageProvider sourceProvider,
+        String sourceBucket,
+        StorageProvider targetProvider,
+        String targetBucket
+) {
+<span class="fc" id="L14">    public CopyFileRequest {</span>
+<span class="fc" id="L15">        sourceKey = ValidationUtils.requireNonBlank(sourceKey, &quot;sourceKey&quot;);</span>
+<span class="fc" id="L16">        targetKey = ValidationUtils.requireNonBlank(targetKey, &quot;targetKey&quot;);</span>
+<span class="fc" id="L17">        sourceBucket = ValidationUtils.normalizeToNull(sourceBucket);</span>
+<span class="fc" id="L18">        targetBucket = ValidationUtils.normalizeToNull(targetBucket);</span>
+<span class="fc" id="L19">    }</span>
+
+    public CopyFileRequest(String sourceKey, String targetKey) {
+<span class="fc" id="L22">        this(sourceKey, targetKey, null, null, null, null);</span>
+<span class="fc" id="L23">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

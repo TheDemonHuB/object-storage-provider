@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObjectStorageServiceBuilder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Object Storage Library</a> &gt; <a href="index.source.html" class="el_package">com.example.objectstorage.config</a> &gt; <span class="el_source">ObjectStorageServiceBuilder.java</span></div><h1>ObjectStorageServiceBuilder.java</h1><pre class="source lang-java linenums">package com.example.objectstorage.config;
+
+import com.example.objectstorage.api.ObjectStorageService;
+import com.example.objectstorage.api.StorageProvider;
+import com.example.objectstorage.core.DefaultObjectStorageService;
+import com.example.objectstorage.core.ProviderClient;
+import com.example.objectstorage.provider.azure.AzureBlobProviderClient;
+import com.example.objectstorage.provider.gcp.GcpProviderClient;
+import com.example.objectstorage.provider.s3.S3ProviderClient;
+import com.example.objectstorage.provider.utho.UthoProviderClient;
+import java.time.Clock;
+import java.time.ZoneId;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+public final class ObjectStorageServiceBuilder {
+    public static final int DEFAULT_BATCH_SIZE = 100;
+    public static final int DEFAULT_MAX_CONCURRENT_BATCH_ITEMS = 4;
+    public static final int DEFAULT_MAX_BATCH_ITEMS = 500;
+<span class="fc" id="L26">    public static final Integer DEFAULT_LIST_MAX_RESULTS = null;</span>
+<span class="fc" id="L27">    public static final ZoneId DEFAULT_TIME_ZONE = ZoneId.of(&quot;UTC&quot;);</span>
+
+    private S3StorageConfig s3StorageConfig;
+    private AzureBlobStorageConfig azureBlobStorageConfig;
+    private GcpStorageConfig gcpStorageConfig;
+    private UthoStorageConfig uthoStorageConfig;
+    private int maxConcurrentSaves;
+<span class="fc" id="L34">    private int batchSize = DEFAULT_BATCH_SIZE;</span>
+<span class="fc" id="L35">    private int maxConcurrentBatchItems = DEFAULT_MAX_CONCURRENT_BATCH_ITEMS;</span>
+<span class="fc" id="L36">    private int maxBatchItems = DEFAULT_MAX_BATCH_ITEMS;</span>
+<span class="fc" id="L37">    private Integer defaultListMaxResults = DEFAULT_LIST_MAX_RESULTS;</span>
+    private Set&lt;String&gt; allowedFileExtensions;
+    private Long maxFileSizeBytes;
+    private String basePath;
+<span class="fc" id="L41">    private ZoneId timeZone = DEFAULT_TIME_ZONE;</span>
+    private StorageProvider provider;
+    private String bucket;
+
+<span class="fc" id="L45">    private ObjectStorageServiceBuilder() {</span>
+<span class="fc" id="L46">    }</span>
+
+    public static ObjectStorageServiceBuilder builder() {
+<span class="fc" id="L49">        return new ObjectStorageServiceBuilder();</span>
+    }
+
+    public ObjectStorageServiceBuilder withS3(S3StorageConfig config) {
+<span class="fc" id="L53">        this.s3StorageConfig = Objects.requireNonNull(config, &quot;s3 config must not be null&quot;);</span>
+<span class="fc" id="L54">        return this;</span>
+    }
+
+    public ObjectStorageServiceBuilder withAzure(AzureBlobStorageConfig config) {
+<span class="nc" id="L58">        this.azureBlobStorageConfig = Objects.requireNonNull(config, &quot;azure config must not be null&quot;);</span>
+<span class="nc" id="L59">        return this;</span>
+    }
+
+    public ObjectStorageServiceBuilder withGcp(GcpStorageConfig config) {
+<span class="nc" id="L63">        this.gcpStorageConfig = Objects.requireNonNull(config, &quot;gcp config must not be null&quot;);</span>
+<span class="nc" id="L64">        return this;</span>
+    }
+
+    public ObjectStorageServiceBuilder withUtho(UthoStorageConfig config) {
+<span class="nc" id="L68">        this.uthoStorageConfig = Objects.requireNonNull(config, &quot;utho config must not be null&quot;);</span>
+<span class="nc" id="L69">        return this;</span>
+    }
+
+    public ObjectStorageServiceBuilder withMaxConcurrentSaves(int maxConcurrentSaves) {
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">        if (maxConcurrentSaves &lt; 0) {</span>
+<span class="nc" id="L74">            throw new IllegalArgumentException(&quot;maxConcurrentSaves must not be negative&quot;);</span>
+        }
+<span class="fc" id="L76">        this.maxConcurrentSaves = maxConcurrentSaves;</span>
+<span class="fc" id="L77">        return this;</span>
+    }
+
+    public ObjectStorageServiceBuilder withSingleFileSaveMode(boolean enabled) {
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        this.maxConcurrentSaves = enabled ? 1 : 0;</span>
+<span class="fc" id="L82">        return this;</span>
+    }
+
+    public ObjectStorageServiceBuilder withBatchSize(int batchSize) {
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (batchSize &lt;= 0) {</span>
+<span class="fc" id="L87">            throw new IllegalArgumentException(&quot;batchSize must be greater than 0&quot;);</span>
+        }
+<span class="fc" id="L89">        this.batchSize = batchSize;</span>
+<span class="fc" id="L90">        return this;</span>
+    }
+
+    public ObjectStorageServiceBuilder withMaxConcurrentBatchItems(int maxConcurrentBatchItems) {
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        if (maxConcurrentBatchItems &lt;= 0) {</span>
+<span class="fc" id="L95">            throw new IllegalArgumentException(&quot;maxConcurrentBatchItems must be greater than 0&quot;);</span>
+        }
+<span class="fc" id="L97">        this.maxConcurrentBatchItems = maxConcurrentBatchItems;</span>
+<span class="fc" id="L98">        return this;</span>
+    }
+
+    public ObjectStorageServiceBuilder withMaxBatchItems(int maxBatchItems) {
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        if (maxBatchItems &lt;= 0) {</span>
+<span class="fc" id="L103">            throw new IllegalArgumentException(&quot;maxBatchItems must be greater than 0&quot;);</span>
+        }
+<span class="fc" id="L105">        this.maxBatchItems = maxBatchItems;</span>
+<span class="fc" id="L106">        return this;</span>
+    }
+
+    public ObjectStorageServiceBuilder withDefaultListMaxResults(Integer defaultListMaxResults) {
+<span class="fc bfc" id="L110" title="All 4 branches covered.">        if (defaultListMaxResults != null &amp;&amp; defaultListMaxResults &lt;= 0) {</span>
+<span class="fc" id="L111">            throw new IllegalArgumentException(&quot;defaultListMaxResults must be greater than 0&quot;);</span>
+        }
+<span class="fc" id="L113">        this.defaultListMaxResults = defaultListMaxResults;</span>
+<span class="fc" id="L114">        return this;</span>
+    }
+
+    public ObjectStorageServiceBuilder withAllowedFileExtensions(List&lt;String&gt; allowedFileExtensions) {
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (allowedFileExtensions == null) {</span>
+<span class="fc" id="L119">            this.allowedFileExtensions = null;</span>
+<span class="fc" id="L120">            return this;</span>
+        }
+<span class="fc" id="L122">        Set&lt;String&gt; normalized = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        for (String extension : allowedFileExtensions) {</span>
+<span class="pc bpc" id="L124" title="1 of 4 branches missed.">            if (extension == null || extension.isBlank()) {</span>
+<span class="fc" id="L125">                throw new IllegalArgumentException(&quot;allowedFileExtensions must not contain blank values&quot;);</span>
+            }
+<span class="fc" id="L127">            String normalizedExtension = extension.trim().toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            if (normalizedExtension.startsWith(&quot;.&quot;)) {</span>
+<span class="fc" id="L129">                normalizedExtension = normalizedExtension.substring(1);</span>
+            }
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">            if (normalizedExtension.isBlank()) {</span>
+<span class="nc" id="L132">                throw new IllegalArgumentException(&quot;allowedFileExtensions must not contain blank values&quot;);</span>
+            }
+<span class="fc" id="L134">            normalized.add(normalizedExtension);</span>
+<span class="fc" id="L135">        }</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        if (normalized.isEmpty()) {</span>
+<span class="nc" id="L137">            throw new IllegalArgumentException(&quot;allowedFileExtensions must not be empty&quot;);</span>
+        }
+<span class="fc" id="L139">        this.allowedFileExtensions = Collections.unmodifiableSet(new LinkedHashSet&lt;&gt;(normalized));</span>
+<span class="fc" id="L140">        return this;</span>
+    }
+
+    public ObjectStorageServiceBuilder withMaxFileSizeBytes(Long maxFileSizeBytes) {
+<span class="fc bfc" id="L144" title="All 4 branches covered.">        if (maxFileSizeBytes != null &amp;&amp; maxFileSizeBytes &lt;= 0) {</span>
+<span class="fc" id="L145">            throw new IllegalArgumentException(&quot;maxFileSizeBytes must be greater than 0&quot;);</span>
+        }
+<span class="fc" id="L147">        this.maxFileSizeBytes = maxFileSizeBytes;</span>
+<span class="fc" id="L148">        return this;</span>
+    }
+
+    public ObjectStorageServiceBuilder withBasePath(String basePath) {
+<span class="pc bpc" id="L152" title="1 of 4 branches missed.">        this.basePath = basePath == null || basePath.isBlank() ? null : basePath.trim();</span>
+<span class="fc" id="L153">        return this;</span>
+    }
+
+    public ObjectStorageServiceBuilder withTimeZone(String timeZone) {
+<span class="fc" id="L157">        Objects.requireNonNull(timeZone, &quot;timeZone must not be null&quot;);</span>
+<span class="fc" id="L158">        this.timeZone = ZoneId.of(timeZone.trim());</span>
+<span class="fc" id="L159">        return this;</span>
+    }
+
+    public ObjectStorageServiceBuilder withProvider(StorageProvider provider) {
+<span class="fc" id="L163">        this.provider = Objects.requireNonNull(provider, &quot;provider must not be null&quot;);</span>
+<span class="fc" id="L164">        return this;</span>
+    }
+
+    public ObjectStorageServiceBuilder withBucket(String bucket) {
+<span class="pc bpc" id="L168" title="2 of 4 branches missed.">        this.bucket = bucket == null || bucket.isBlank() ? null : bucket.trim();</span>
+<span class="fc" id="L169">        return this;</span>
+    }
+
+    public ObjectStorageService build() {
+<span class="fc" id="L173">        Map&lt;StorageProvider, ProviderClient&gt; providers = new EnumMap&lt;&gt;(StorageProvider.class);</span>
+
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">        if (s3StorageConfig != null) {</span>
+<span class="fc" id="L176">            providers.put(StorageProvider.S3, new S3ProviderClient(s3StorageConfig));</span>
+        }
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">        if (azureBlobStorageConfig != null) {</span>
+<span class="nc" id="L179">            providers.put(StorageProvider.AZURE, new AzureBlobProviderClient(azureBlobStorageConfig));</span>
+        }
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">        if (gcpStorageConfig != null) {</span>
+<span class="nc" id="L182">            providers.put(StorageProvider.GCP, new GcpProviderClient(gcpStorageConfig));</span>
+        }
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">        if (uthoStorageConfig != null) {</span>
+<span class="nc" id="L185">            providers.put(StorageProvider.UTHO, new UthoProviderClient(uthoStorageConfig));</span>
+        }
+
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        if (provider == null) {</span>
+<span class="fc" id="L189">            throw new IllegalStateException(&quot;provider must be configured via withProvider(...)&quot;);</span>
+        }
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        if (bucket == null) {</span>
+<span class="fc" id="L192">            throw new IllegalStateException(&quot;bucket must be configured via withBucket(...)&quot;);</span>
+        }
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        if (!providers.containsKey(provider)) {</span>
+<span class="fc" id="L195">            throw new IllegalStateException(&quot;Configured provider is not enabled: &quot; + provider);</span>
+        }
+
+<span class="fc" id="L198">        return new DefaultObjectStorageService(</span>
+                providers,
+                provider,
+                bucket,
+                maxConcurrentSaves,
+                new DefaultObjectStorageService.ServiceSettings(
+                        batchSize,
+                        maxConcurrentBatchItems,
+                        maxBatchItems,
+                        defaultListMaxResults,
+<span class="fc bfc" id="L208" title="All 2 branches covered.">                        allowedFileExtensions == null ? null : Collections.unmodifiableSet(new LinkedHashSet&lt;&gt;(allowedFileExtensions)),</span>
+                        maxFileSizeBytes,
+                        basePath,
+                        timeZone,
+<span class="fc" id="L212">                        Clock.system(timeZone)</span>
+                )
+        );
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

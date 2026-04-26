@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RetrievedObject.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Object Storage Library</a> &gt; <a href="index.source.html" class="el_package">com.example.objectstorage.api.response</a> &gt; <span class="el_source">RetrievedObject.java</span></div><h1>RetrievedObject.java</h1><pre class="source lang-java linenums">package com.example.objectstorage.api.response;
+
+import com.example.objectstorage.api.StorageProvider;
+import com.example.objectstorage.core.ValidationUtils;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.Objects;
+
+public record RetrievedObject(
+        StorageProvider provider,
+        String bucket,
+        String key,
+        byte[] content,
+        String contentType,
+        Map&lt;String, String&gt; metadata,
+        long size
+) {
+<span class="fc" id="L18">    public RetrievedObject {</span>
+<span class="fc" id="L19">        Objects.requireNonNull(provider, &quot;provider must not be null&quot;);</span>
+<span class="fc" id="L20">        bucket = ValidationUtils.requireNonBlank(bucket, &quot;bucket&quot;);</span>
+<span class="fc" id="L21">        key = ValidationUtils.requireNonBlank(key, &quot;key&quot;);</span>
+<span class="fc" id="L22">        Objects.requireNonNull(content, &quot;content must not be null&quot;);</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        if (size &lt; 0) {</span>
+<span class="fc" id="L24">            throw new IllegalArgumentException(&quot;size must not be negative&quot;);</span>
+        }
+<span class="fc" id="L26">        content = Arrays.copyOf(content, content.length);</span>
+<span class="fc" id="L27">        contentType = ValidationUtils.normalizeToNull(contentType);</span>
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">        metadata = metadata == null ? Map.of() : Map.copyOf(metadata);</span>
+<span class="fc" id="L29">    }</span>
+
+    @Override
+    public byte[] content() {
+<span class="fc" id="L33">        return Arrays.copyOf(content, content.length);</span>
+    }
+
+    @Override
+    public boolean equals(Object other) {
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        if (this == other) {</span>
+<span class="fc" id="L39">            return true;</span>
+        }
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        if (!(other instanceof RetrievedObject that)) {</span>
+<span class="nc" id="L42">            return false;</span>
+        }
+<span class="fc bfc" id="L44" title="All 4 branches covered.">        return size == that.size</span>
+                &amp;&amp; provider == that.provider
+<span class="fc bfc" id="L46" title="All 2 branches covered.">                &amp;&amp; Objects.equals(bucket, that.bucket)</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                &amp;&amp; Objects.equals(key, that.key)</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">                &amp;&amp; Arrays.equals(content, that.content)</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">                &amp;&amp; Objects.equals(contentType, that.contentType)</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                &amp;&amp; Objects.equals(metadata, that.metadata);</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="fc" id="L55">        int result = Objects.hash(provider, bucket, key, contentType, metadata, size);</span>
+<span class="fc" id="L56">        return 31 * result + Arrays.hashCode(content);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L61">        return &quot;RetrievedObject[provider=&quot; + provider</span>
+                + &quot;, bucket=&quot; + bucket
+                + &quot;, key=&quot; + key
+                + &quot;, content=byte[&quot; + content.length + &quot;]&quot;
+                + &quot;, contentType=&quot; + contentType
+                + &quot;, metadata=&quot; + metadata
+                + &quot;, size=&quot; + size + &quot;]&quot;;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

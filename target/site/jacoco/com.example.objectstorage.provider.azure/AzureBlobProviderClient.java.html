@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AzureBlobProviderClient.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Object Storage Library</a> &gt; <a href="index.source.html" class="el_package">com.example.objectstorage.provider.azure</a> &gt; <span class="el_source">AzureBlobProviderClient.java</span></div><h1>AzureBlobProviderClient.java</h1><pre class="source lang-java linenums">package com.example.objectstorage.provider.azure;
+
+import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.BlobServiceClient;
+import com.azure.storage.blob.BlobServiceClientBuilder;
+import com.azure.storage.blob.models.BlobHttpHeaders;
+import com.azure.storage.blob.models.BlobItem;
+import com.azure.storage.blob.models.BlobProperties;
+import com.azure.storage.blob.models.ListBlobsOptions;
+import com.example.objectstorage.api.StorageProvider;
+import com.example.objectstorage.api.request.DeleteFileRequest;
+import com.example.objectstorage.api.request.GetFileRequest;
+import com.example.objectstorage.api.request.ListFilesRequest;
+import com.example.objectstorage.api.request.UploadFileRequest;
+import com.example.objectstorage.api.response.RetrievedObject;
+import com.example.objectstorage.api.response.StorageObjectInfo;
+import com.example.objectstorage.api.response.StoredObject;
+import com.example.objectstorage.config.AzureBlobStorageConfig;
+import com.example.objectstorage.core.ProviderClient;
+import com.example.objectstorage.core.ProviderClientSupport;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public final class AzureBlobProviderClient implements ProviderClient {
+<span class="fc" id="L32">    private static final Logger LOGGER = LoggerFactory.getLogger(AzureBlobProviderClient.class);</span>
+    private static final String BUCKET_FIELD = &quot;bucket&quot;;
+
+    private final BlobServiceClient blobServiceClient;
+<span class="pc" id="L36">    private final ProviderClientSupport operations = new ProviderClientSupport(&quot;Azure&quot;, &quot;container&quot;);</span>
+
+<span class="nc" id="L38">    public AzureBlobProviderClient(AzureBlobStorageConfig config) {</span>
+<span class="nc" id="L39">        Objects.requireNonNull(config, &quot;config must not be null&quot;);</span>
+<span class="nc" id="L40">        this.blobServiceClient = new BlobServiceClientBuilder()</span>
+<span class="nc" id="L41">                .connectionString(config.connectionString())</span>
+<span class="nc" id="L42">                .buildClient();</span>
+<span class="nc" id="L43">    }</span>
+
+<span class="fc" id="L45">    AzureBlobProviderClient(BlobServiceClient blobServiceClient) {</span>
+<span class="fc" id="L46">        this.blobServiceClient = Objects.requireNonNull(blobServiceClient, &quot;blobServiceClient must not be null&quot;);</span>
+<span class="fc" id="L47">    }</span>
+
+    @Override
+    public StorageProvider provider() {
+<span class="fc" id="L51">        return StorageProvider.AZURE;</span>
+    }
+
+    @Override
+    public StoredObject saveFile(String bucket, UploadFileRequest request) {
+<span class="fc" id="L56">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="fc" id="L57">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="fc" id="L58">        String key = request.key();</span>
+<span class="fc" id="L59">        return operations.executeKeyOperation(LOGGER, &quot;upload&quot;, targetBucket, key, () -&gt; {</span>
+<span class="fc" id="L60">            BlobClient blobClient = resolveBlobClient(targetBucket, key);</span>
+<span class="fc" id="L61">            blobClient.upload(new ByteArrayInputStream(request.content()), request.content().length, true);</span>
+
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">            if (request.contentType() != null) {</span>
+<span class="fc" id="L64">                blobClient.setHttpHeaders(new BlobHttpHeaders().setContentType(request.contentType()));</span>
+            }
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">            if (!request.metadata().isEmpty()) {</span>
+<span class="fc" id="L67">                blobClient.setMetadata(request.metadata());</span>
+            }
+
+<span class="fc" id="L70">            BlobProperties properties = blobClient.getProperties();</span>
+<span class="fc" id="L71">            StoredObject storedObject = new StoredObject(</span>
+<span class="fc" id="L72">                    provider(),</span>
+                    targetBucket,
+                    key,
+<span class="fc" id="L75">                    properties.getETag(),</span>
+                    null
+            );
+<span class="fc" id="L78">            LOGGER.info(&quot;Azure upload completed: container={}, key={}&quot;, targetBucket, key);</span>
+<span class="fc" id="L79">            return storedObject;</span>
+        });
+    }
+
+    @Override
+    public RetrievedObject getFile(String bucket, GetFileRequest request) {
+<span class="fc" id="L85">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="fc" id="L86">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="fc" id="L87">        String key = request.key();</span>
+<span class="fc" id="L88">        return operations.executeKeyOperation(LOGGER, &quot;download&quot;, targetBucket, key, () -&gt; {</span>
+<span class="fc" id="L89">            BlobClient blobClient = resolveBlobClient(targetBucket, key);</span>
+<span class="fc" id="L90">            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();</span>
+<span class="fc" id="L91">            blobClient.downloadStream(outputStream);</span>
+<span class="fc" id="L92">            byte[] bytes = outputStream.toByteArray();</span>
+<span class="fc" id="L93">            BlobProperties properties = blobClient.getProperties();</span>
+
+<span class="fc" id="L95">            Long blobSize = properties.getBlobSize();</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">            long size = blobSize == null ? bytes.length : blobSize;</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">            Map&lt;String, String&gt; metadata = properties.getMetadata() == null ? Map.of() : properties.getMetadata();</span>
+
+<span class="fc" id="L99">            RetrievedObject retrievedObject = new RetrievedObject(</span>
+<span class="fc" id="L100">                    provider(),</span>
+                    targetBucket,
+                    key,
+                    bytes,
+<span class="fc" id="L104">                    properties.getContentType(),</span>
+                    metadata,
+                    size
+            );
+<span class="fc" id="L108">            LOGGER.info(&quot;Azure download completed: container={}, key={}, size={}&quot;, targetBucket, key, size);</span>
+<span class="fc" id="L109">            return retrievedObject;</span>
+        });
+    }
+
+    @Override
+    public void deleteFile(String bucket, DeleteFileRequest request) {
+<span class="fc" id="L115">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="fc" id="L116">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="fc" id="L117">        String key = request.key();</span>
+<span class="fc" id="L118">        operations.executeVoidKeyOperation(LOGGER, &quot;delete&quot;, targetBucket, key, () -&gt; {</span>
+<span class="fc" id="L119">            resolveBlobClient(targetBucket, key).deleteIfExists();</span>
+<span class="fc" id="L120">            LOGGER.info(&quot;Azure delete completed: container={}, key={}&quot;, targetBucket, key);</span>
+<span class="fc" id="L121">        });</span>
+<span class="fc" id="L122">    }</span>
+
+    @Override
+    public List&lt;StorageObjectInfo&gt; listFiles(String bucket, ListFilesRequest request) {
+<span class="fc" id="L126">        String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);</span>
+<span class="fc" id="L127">        Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);</span>
+<span class="fc" id="L128">        String prefix = request.prefix();</span>
+<span class="fc" id="L129">        Integer maxResults = request.maxResults();</span>
+<span class="fc" id="L130">        return operations.executeListOperation(LOGGER, targetBucket, prefix, maxResults, () -&gt; {</span>
+<span class="fc" id="L131">            BlobContainerClient containerClient = resolveContainerClient(targetBucket);</span>
+<span class="fc" id="L132">            ListBlobsOptions options = new ListBlobsOptions();</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">            if (prefix != null) {</span>
+<span class="fc" id="L134">                options.setPrefix(prefix);</span>
+            }
+
+<span class="fc" id="L137">            List&lt;StorageObjectInfo&gt; objects = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            for (BlobItem item : containerClient.listBlobs(options, null)) {</span>
+<span class="pc bpc" id="L139" title="2 of 6 branches missed.">                if (addBlobIfFile(item, objects) &amp;&amp; maxResults != null &amp;&amp; objects.size() &gt;= maxResults) {</span>
+<span class="nc" id="L140">                    return completeList(targetBucket, objects);</span>
+                }
+<span class="fc" id="L142">            }</span>
+<span class="fc" id="L143">            return completeList(targetBucket, objects);</span>
+        });
+    }
+
+    private boolean addBlobIfFile(BlobItem item, List&lt;StorageObjectInfo&gt; objects) {
+<span class="fc" id="L148">        String key = item.getName();</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        if (isDirectoryMarker(key)) {</span>
+<span class="fc" id="L150">            return false;</span>
+        }
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        long size = item.getProperties().getContentLength() == null ? 0 : item.getProperties().getContentLength();</span>
+<span class="fc" id="L153">        objects.add(new StorageObjectInfo(</span>
+                key,
+                size,
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">                item.getProperties().getLastModified() == null ? null : item.getProperties().getLastModified().toInstant()</span>
+        ));
+<span class="fc" id="L158">        return true;</span>
+    }
+
+    private List&lt;StorageObjectInfo&gt; completeList(String container, List&lt;StorageObjectInfo&gt; objects) {
+<span class="fc" id="L162">        List&lt;StorageObjectInfo&gt; storageObjectInfos = List.copyOf(objects);</span>
+<span class="fc" id="L163">        int itemCount = storageObjectInfos.size();</span>
+<span class="fc" id="L164">        LOGGER.info(&quot;Azure list completed: container={}, itemCount={}&quot;, container, itemCount);</span>
+<span class="fc" id="L165">        return storageObjectInfos;</span>
+    }
+
+    private BlobContainerClient resolveContainerClient(String bucket) {
+<span class="fc" id="L169">        return blobServiceClient.getBlobContainerClient(bucket);</span>
+    }
+
+    private BlobClient resolveBlobClient(String bucket, String key) {
+<span class="fc" id="L173">        return resolveContainerClient(bucket).getBlobClient(key);</span>
+    }
+
+    private boolean isDirectoryMarker(String key) {
+<span class="pc bpc" id="L177" title="1 of 4 branches missed.">        return key != null &amp;&amp; key.endsWith(&quot;/&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
