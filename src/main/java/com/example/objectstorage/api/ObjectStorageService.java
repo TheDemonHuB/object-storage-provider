@@ -2,6 +2,7 @@ package com.example.objectstorage.api;
 
 import com.example.objectstorage.api.request.DeleteFileRequest;
 import com.example.objectstorage.api.request.GetFileRequest;
+import com.example.objectstorage.api.request.GetVersionsRequest;
 import com.example.objectstorage.api.request.ListFilesRequest;
 import com.example.objectstorage.api.request.MoveFileRequest;
 import com.example.objectstorage.api.request.UploadFileRequest;
@@ -47,6 +48,11 @@ public interface ObjectStorageService extends AutoCloseable {
      * Lists files for a prefix and optional result cap.
      */
     List<StorageObjectInfo> listFiles(ListFilesRequest request);
+
+    /**
+     * Lists all available versions for an exact file path.
+     */
+    List<StorageObjectInfo> getVersions(GetVersionsRequest request);
 
     @Override
     default void close() {

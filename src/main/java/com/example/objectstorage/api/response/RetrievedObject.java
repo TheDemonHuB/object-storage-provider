@@ -11,7 +11,8 @@ import java.util.Objects;
 public record RetrievedObject(
         StorageProvider provider,
         String bucket,
-        String key,
+        String filePath,
+        String versionId,
         InputStream content,
         String contentType,
         Map<String, String> metadata,
@@ -20,7 +21,8 @@ public record RetrievedObject(
     public RetrievedObject {
         Objects.requireNonNull(provider, "provider must not be null");
         bucket = ValidationUtils.requireNonBlank(bucket, "bucket");
-        key = ValidationUtils.requireNonBlank(key, "key");
+        filePath = ValidationUtils.requireNonBlank(filePath, "filePath");
+        versionId = ValidationUtils.normalizeToNull(versionId);
         Objects.requireNonNull(content, "content must not be null");
         if (size < 0) {
             throw new IllegalArgumentException("size must not be negative");
@@ -42,7 +44,8 @@ public record RetrievedObject(
     public String toString() {
         return "RetrievedObject[provider=" + provider
                 + ", bucket=" + bucket
-                + ", key=" + key
+                + ", filePath=" + filePath
+                + ", versionId=" + versionId
                 + ", content=stream"
                 + ", contentType=" + contentType
                 + ", metadata=" + metadata

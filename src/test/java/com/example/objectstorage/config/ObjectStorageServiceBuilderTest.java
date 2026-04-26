@@ -56,14 +56,13 @@ class ObjectStorageServiceBuilderTest {
     }
 
     @Test
-    void shouldRejectInvalidBatchAndTimezoneConfig() {
+    void shouldRejectInvalidBatchConfig() {
         assertThrows(IllegalArgumentException.class, this::createBuilderWithInvalidBatchSize);
         assertThrows(IllegalArgumentException.class, this::createBuilderWithInvalidConcurrentBatchItems);
         assertThrows(IllegalArgumentException.class, this::createBuilderWithInvalidMaxBatchItems);
         assertThrows(IllegalArgumentException.class, this::createBuilderWithInvalidDefaultListMaxResults);
         assertThrows(IllegalArgumentException.class, this::createBuilderWithInvalidAllowedFileExtensions);
         assertThrows(IllegalArgumentException.class, this::createBuilderWithInvalidMaxFileSizeBytes);
-        assertThrows(NullPointerException.class, this::createBuilderWithNullTimeZone);
     }
 
     @Test
@@ -73,7 +72,7 @@ class ObjectStorageServiceBuilderTest {
                 .withProvider(StorageProvider.S3)
                 .withBucket(" bucket-a ")
                 .withBasePath(" docs ")
-                .withTimeZone(" UTC ")
+                
                 .withBatchSize(25)
                 .withMaxConcurrentBatchItems(3)
                 .withMaxBatchItems(250)
@@ -137,7 +136,5 @@ class ObjectStorageServiceBuilderTest {
         return ObjectStorageServiceBuilder.builder().withMaxFileSizeBytes(0L);
     }
 
-    private ObjectStorageServiceBuilder createBuilderWithNullTimeZone() {
-        return ObjectStorageServiceBuilder.builder().withTimeZone(null);
-    }
 }
+

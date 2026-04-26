@@ -15,6 +15,7 @@ class RetrievedObjectTest {
                 StorageProvider.S3,
                 "bucket",
                 "key",
+                null,
                 new ByteArrayInputStream(new byte[]{1, 2, 3}),
                 "application/octet-stream",
                 Map.of("a", "b"),
@@ -23,7 +24,7 @@ class RetrievedObjectTest {
 
         assertEquals(StorageProvider.S3, object.provider());
         assertEquals("bucket", object.bucket());
-        assertEquals("key", object.key());
+        assertEquals("key", object.filePath());
         assertEquals(3L, object.size());
         object.close();
     }
@@ -31,10 +32,11 @@ class RetrievedObjectTest {
     @Test
     void shouldRejectInvalidRetrievedObject() {
         assertThrows(NullPointerException.class, () ->
-                new RetrievedObject(null, "bucket", "key", new ByteArrayInputStream(new byte[]{1}), null, Map.of(), 1L));
+                new RetrievedObject(null, "bucket", "key", null, new ByteArrayInputStream(new byte[]{1}), null, Map.of(), 1L));
         assertThrows(IllegalArgumentException.class, () ->
-                new RetrievedObject(StorageProvider.S3, " ", "key", new ByteArrayInputStream(new byte[]{1}), null, Map.of(), 1L));
+                new RetrievedObject(StorageProvider.S3, " ", "key", null, new ByteArrayInputStream(new byte[]{1}), null, Map.of(), 1L));
         assertThrows(IllegalArgumentException.class, () ->
-                new RetrievedObject(StorageProvider.S3, "bucket", "key", new ByteArrayInputStream(new byte[]{1}), null, Map.of(), -1L));
+                new RetrievedObject(StorageProvider.S3, "bucket", "key", null, new ByteArrayInputStream(new byte[]{1}), null, Map.of(), -1L));
     }
 }
+

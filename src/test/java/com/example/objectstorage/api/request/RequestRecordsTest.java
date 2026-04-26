@@ -11,16 +11,16 @@ import org.junit.jupiter.api.Test;
 class RequestRecordsTest {
     @Test
     void shouldCreateDeleteAndGetRequestsWithValidData() {
-        DeleteFileRequest deleteRequest = new DeleteFileRequest("key");
-        GetFileRequest getRequest = new GetFileRequest("key");
+        DeleteFileRequest deleteRequest = new DeleteFileRequest("key", null, null, null);
+        GetFileRequest getRequest = new GetFileRequest("key", null, null, null);
 
-        assertEquals("key", deleteRequest.key());
-        assertEquals("key", getRequest.key());
+        assertEquals("key", deleteRequest.filePath());
+        assertEquals("key", getRequest.filePath());
     }
 
     @Test
     void shouldRejectBlankKeyForDeleteRequest() {
-        assertThrows(IllegalArgumentException.class, () -> new DeleteFileRequest(" "));
+        assertThrows(IllegalArgumentException.class, () -> new DeleteFileRequest(" ", null, null, null));
     }
 
     @Test
@@ -35,8 +35,8 @@ class RequestRecordsTest {
 
     @Test
     void shouldCreateCopyAndMoveRequestsWithValidData() {
-        CopyFileRequest copyRequest = new CopyFileRequest("source/a.txt", "target/a.txt");
-        MoveFileRequest moveRequest = new MoveFileRequest("source/b.txt", "target/b.txt");
+        CopyFileRequest copyRequest = new CopyFileRequest("source/a.txt", null, "target/a.txt", null, null, null, null);
+        MoveFileRequest moveRequest = new MoveFileRequest("source/b.txt", null, "target/b.txt", null, null, null, null);
 
         assertEquals("source/a.txt", copyRequest.sourceKey());
         assertEquals("target/a.txt", copyRequest.targetKey());
@@ -46,10 +46,10 @@ class RequestRecordsTest {
 
     @Test
     void shouldRejectBlankKeysForCopyAndMoveRequests() {
-        assertThrows(IllegalArgumentException.class, () -> new CopyFileRequest(" ", "a.txt"));
-        assertThrows(IllegalArgumentException.class, () -> new CopyFileRequest("a.txt", " "));
-        assertThrows(IllegalArgumentException.class, () -> new MoveFileRequest(" ", "a.txt"));
-        assertThrows(IllegalArgumentException.class, () -> new MoveFileRequest("a.txt", " "));
+        assertThrows(IllegalArgumentException.class, () -> new CopyFileRequest(" ", null, "a.txt", null, null, null, null));
+        assertThrows(IllegalArgumentException.class, () -> new CopyFileRequest("a.txt", null, " ", null, null, null, null));
+        assertThrows(IllegalArgumentException.class, () -> new MoveFileRequest(" ", null, "a.txt", null, null, null, null));
+        assertThrows(IllegalArgumentException.class, () -> new MoveFileRequest("a.txt", null, " ", null, null, null, null));
     }
 
     @Test
@@ -59,14 +59,28 @@ class RequestRecordsTest {
                 new ByteArrayInputStream(new byte[]{1}),
                 1L,
                 "text/plain",
-                Map.of("k", "v")
+                Map.of("k", "v"),
+                "v1",
+                null,
+                null
         );
 
-        assertEquals("docs/a.txt", request.key());
+        assertEquals("docs/a.txt", request.filePath());
         assertEquals(1L, request.contentLength());
         assertEquals("text/plain", request.contentType());
         assertEquals("v", request.metadata().get("k"));
+        assertEquals("v1", request.versionId());
         assertThrows(IllegalArgumentException.class, () ->
-                new UploadFileRequest("a.txt", new ByteArrayInputStream(new byte[]{1}), 0L, null, Map.of()));
+                new UploadFileRequest("a.txt", new ByteArrayInputStream(new byte[]{1}), 0L, null, Map.of(), null, null, null));
+    }
+
+    @Test
+    void shouldCreateAndValidateGetVersionsRequest() {
+        GetVersionsRequest request = new GetVersionsRequest("docs/a.txt", null, " ");
+
+        assertEquals("docs/a.txt", request.filePath());
+        assertNull(request.bucket());
+        assertThrows(IllegalArgumentException.class, () -> new GetVersionsRequest(" ", null, null));
     }
 }
+

@@ -7,42 +7,35 @@ import java.util.Map;
 import java.util.Objects;
 
 public record UploadFileRequest(
-        String key,
+        String filePath,
         InputStream content,
         long contentLength,
         String contentType,
         Map<String, String> metadata,
+        String versionId,
         StorageProvider provider,
         String bucket
 ) {
     public UploadFileRequest {
-        key = ValidationUtils.requireNonBlank(key, "key");
+        filePath = ValidationUtils.requireNonBlank(filePath, "filePath");
         Objects.requireNonNull(content, "content must not be null");
         if (contentLength <= 0) {
             throw new IllegalArgumentException("contentLength must be greater than 0");
         }
         contentType = ValidationUtils.normalizeToNull(contentType);
+        versionId = ValidationUtils.normalizeToNull(versionId);
         bucket = ValidationUtils.normalizeToNull(bucket);
         metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
     }
 
-    public UploadFileRequest(
-            String key,
-            InputStream content,
-            long contentLength,
-            String contentType,
-            Map<String, String> metadata
-    ) {
-        this(key, content, contentLength, contentType, metadata, null, null);
-    }
-
     @Override
     public String toString() {
-        return "UploadFileRequest[key=" + key
+        return "UploadFileRequest[filePath=" + filePath
                 + ", content=stream"
                 + ", contentLength=" + contentLength
                 + ", contentType=" + contentType
                 + ", metadata=" + metadata
+                + ", versionId=" + versionId
                 + ", provider=" + provider
                 + ", bucket=" + bucket + "]";
     }

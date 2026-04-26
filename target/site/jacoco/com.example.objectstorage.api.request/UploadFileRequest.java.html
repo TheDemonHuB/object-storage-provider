@@ -2,72 +2,40 @@
 
 import com.example.objectstorage.api.StorageProvider;
 import com.example.objectstorage.core.ValidationUtils;
-import java.util.Arrays;
+import java.io.InputStream;
 import java.util.Map;
 import java.util.Objects;
 
 public record UploadFileRequest(
-        String key,
-        byte[] content,
+        String filePath,
+        InputStream content,
+        long contentLength,
         String contentType,
         Map&lt;String, String&gt; metadata,
+        String versionId,
         StorageProvider provider,
         String bucket
 ) {
-<span class="fc" id="L17">    public UploadFileRequest {</span>
-<span class="fc" id="L18">        key = ValidationUtils.requireNonBlank(key, &quot;key&quot;);</span>
-<span class="fc" id="L19">        Objects.requireNonNull(content, &quot;content must not be null&quot;);</span>
-<span class="fc bfc" id="L20" title="All 2 branches covered.">        if (content.length == 0) {</span>
-<span class="fc" id="L21">            throw new IllegalArgumentException(&quot;content must not be empty&quot;);</span>
+<span class="fc" id="L19">    public UploadFileRequest {</span>
+<span class="fc" id="L20">        filePath = ValidationUtils.requireNonBlank(filePath, &quot;filePath&quot;);</span>
+<span class="fc" id="L21">        Objects.requireNonNull(content, &quot;content must not be null&quot;);</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">        if (contentLength &lt;= 0) {</span>
+<span class="fc" id="L23">            throw new IllegalArgumentException(&quot;contentLength must be greater than 0&quot;);</span>
         }
-<span class="fc" id="L23">        contentType = ValidationUtils.normalizeToNull(contentType);</span>
-<span class="fc" id="L24">        bucket = ValidationUtils.normalizeToNull(bucket);</span>
-<span class="pc bpc" id="L25" title="1 of 2 branches missed.">        metadata = metadata == null ? Map.of() : Map.copyOf(metadata);</span>
-<span class="fc" id="L26">        content = Arrays.copyOf(content, content.length);</span>
-<span class="fc" id="L27">    }</span>
-
-    public UploadFileRequest(
-            String key,
-            byte[] content,
-            String contentType,
-            Map&lt;String, String&gt; metadata
-    ) {
-<span class="fc" id="L35">        this(key, content, contentType, metadata, null, null);</span>
-<span class="fc" id="L36">    }</span>
-
-    @Override
-    public byte[] content() {
-<span class="fc" id="L40">        return Arrays.copyOf(content, content.length);</span>
-    }
-
-    @Override
-    public boolean equals(Object other) {
-<span class="fc bfc" id="L45" title="All 2 branches covered.">        if (this == other) {</span>
-<span class="fc" id="L46">            return true;</span>
-        }
-<span class="pc bpc" id="L48" title="1 of 2 branches missed.">        if (!(other instanceof UploadFileRequest that)) {</span>
-<span class="nc" id="L49">            return false;</span>
-        }
-<span class="fc bfc" id="L51" title="All 2 branches covered.">        return Objects.equals(key, that.key)</span>
-<span class="fc bfc" id="L52" title="All 2 branches covered.">                &amp;&amp; Arrays.equals(content, that.content)</span>
-<span class="fc bfc" id="L53" title="All 2 branches covered.">                &amp;&amp; Objects.equals(contentType, that.contentType)</span>
-<span class="pc bpc" id="L54" title="1 of 4 branches missed.">                &amp;&amp; Objects.equals(metadata, that.metadata)</span>
-                &amp;&amp; provider == that.provider
-<span class="pc bpc" id="L56" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(bucket, that.bucket);</span>
-    }
-
-    @Override
-    public int hashCode() {
-<span class="fc" id="L61">        int result = Objects.hash(key, contentType, metadata, provider, bucket);</span>
-<span class="fc" id="L62">        return 31 * result + Arrays.hashCode(content);</span>
-    }
+<span class="fc" id="L25">        contentType = ValidationUtils.normalizeToNull(contentType);</span>
+<span class="fc" id="L26">        versionId = ValidationUtils.normalizeToNull(versionId);</span>
+<span class="fc" id="L27">        bucket = ValidationUtils.normalizeToNull(bucket);</span>
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">        metadata = metadata == null ? Map.of() : Map.copyOf(metadata);</span>
+<span class="fc" id="L29">    }</span>
 
     @Override
     public String toString() {
-<span class="fc" id="L67">        return &quot;UploadFileRequest[key=&quot; + key</span>
-                + &quot;, content=byte[&quot; + content.length + &quot;]&quot;
+<span class="nc" id="L33">        return &quot;UploadFileRequest[filePath=&quot; + filePath</span>
+                + &quot;, content=stream&quot;
+                + &quot;, contentLength=&quot; + contentLength
                 + &quot;, contentType=&quot; + contentType
                 + &quot;, metadata=&quot; + metadata
+                + &quot;, versionId=&quot; + versionId
                 + &quot;, provider=&quot; + provider
                 + &quot;, bucket=&quot; + bucket + &quot;]&quot;;
     }

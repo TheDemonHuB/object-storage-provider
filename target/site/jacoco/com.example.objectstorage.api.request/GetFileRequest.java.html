@@ -3,14 +3,11 @@
 import com.example.objectstorage.api.StorageProvider;
 import com.example.objectstorage.core.ValidationUtils;
 
-public record GetFileRequest(String key, StorageProvider provider, String bucket) {
+public record GetFileRequest(String filePath, String versionId, StorageProvider provider, String bucket) {
 <span class="fc" id="L7">    public GetFileRequest {</span>
-<span class="fc" id="L8">        key = ValidationUtils.requireNonBlank(key, &quot;key&quot;);</span>
-<span class="fc" id="L9">        bucket = ValidationUtils.normalizeToNull(bucket);</span>
-<span class="fc" id="L10">    }</span>
-
-    public GetFileRequest(String key) {
-<span class="fc" id="L13">        this(key, null, null);</span>
-<span class="fc" id="L14">    }</span>
+<span class="fc" id="L8">        filePath = ValidationUtils.requireNonBlank(filePath, &quot;filePath&quot;);</span>
+<span class="fc" id="L9">        versionId = ValidationUtils.normalizeToNull(versionId);</span>
+<span class="fc" id="L10">        bucket = ValidationUtils.normalizeToNull(bucket);</span>
+<span class="fc" id="L11">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

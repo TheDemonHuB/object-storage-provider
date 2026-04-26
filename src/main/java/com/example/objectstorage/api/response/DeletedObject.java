@@ -7,11 +7,17 @@ import java.util.Objects;
 public record DeletedObject(
         StorageProvider provider,
         String bucket,
-        String key
+        String filePath,
+        String versionId
 ) {
     public DeletedObject {
         Objects.requireNonNull(provider, "provider must not be null");
         bucket = ValidationUtils.requireNonBlank(bucket, "bucket");
-        key = ValidationUtils.requireNonBlank(key, "key");
+        filePath = ValidationUtils.requireNonBlank(filePath, "filePath");
+        versionId = ValidationUtils.normalizeToNull(versionId);
+    }
+
+    public DeletedObject(StorageProvider provider, String bucket, String filePath) {
+        this(provider, bucket, filePath, null);
     }
 }

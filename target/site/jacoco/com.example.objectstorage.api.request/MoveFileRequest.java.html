@@ -5,21 +5,20 @@ import com.example.objectstorage.core.ValidationUtils;
 
 public record MoveFileRequest(
         String sourceKey,
+        String sourceVersionId,
         String targetKey,
         StorageProvider sourceProvider,
         String sourceBucket,
         StorageProvider targetProvider,
         String targetBucket
 ) {
-<span class="fc" id="L14">    public MoveFileRequest {</span>
-<span class="fc" id="L15">        sourceKey = ValidationUtils.requireNonBlank(sourceKey, &quot;sourceKey&quot;);</span>
-<span class="fc" id="L16">        targetKey = ValidationUtils.requireNonBlank(targetKey, &quot;targetKey&quot;);</span>
-<span class="fc" id="L17">        sourceBucket = ValidationUtils.normalizeToNull(sourceBucket);</span>
-<span class="fc" id="L18">        targetBucket = ValidationUtils.normalizeToNull(targetBucket);</span>
-<span class="fc" id="L19">    }</span>
+<span class="fc" id="L15">    public MoveFileRequest {</span>
+<span class="fc" id="L16">        sourceKey = ValidationUtils.requireNonBlank(sourceKey, &quot;sourceKey&quot;);</span>
+<span class="fc" id="L17">        sourceVersionId = ValidationUtils.normalizeToNull(sourceVersionId);</span>
+<span class="fc" id="L18">        targetKey = ValidationUtils.requireNonBlank(targetKey, &quot;targetKey&quot;);</span>
+<span class="fc" id="L19">        sourceBucket = ValidationUtils.normalizeToNull(sourceBucket);</span>
+<span class="fc" id="L20">        targetBucket = ValidationUtils.normalizeToNull(targetBucket);</span>
+<span class="fc" id="L21">    }</span>
 
-    public MoveFileRequest(String sourceKey, String targetKey) {
-<span class="fc" id="L22">        this(sourceKey, targetKey, null, null, null, null);</span>
-<span class="fc" id="L23">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

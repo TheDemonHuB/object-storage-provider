@@ -3,9 +3,11 @@ package com.example.objectstorage.provider.gcp;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -17,6 +19,7 @@ import com.example.objectstorage.api.request.UploadFileRequest;
 import com.example.objectstorage.api.response.RetrievedObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
+import com.example.objectstorage.core.ObjectStorageException;
 import com.google.api.gax.paging.Page;
 import com.google.cloud.ReadChannel;
 import com.google.cloud.storage.Blob;
@@ -33,7 +36,10 @@ class GcpProviderClientTest {
     @Test
     void shouldSaveFile() throws Exception {
         Storage storage = mock(Storage.class);
+        Blob existingBlob = mock(Blob.class);
         Blob blob = mock(Blob.class);
+        when(storage.get(eq(BlobId.of("bucket", "docs/a.txt")))).thenReturn(existingBlob);
+        when(existingBlob.getGeneration()).thenReturn(7L);
         when(storage.createFrom(any(BlobInfo.class), any(java.io.InputStream.class))).thenReturn(blob);
         when(blob.getEtag()).thenReturn("etag");
         when(blob.getGeneration()).thenReturn(7L);
@@ -44,11 +50,60 @@ class GcpProviderClientTest {
                 new ByteArrayInputStream(new byte[]{1, 2}),
                 2L,
                 "text/plain",
-                Map.of("owner", "team")
+                Map.of("owner", "team"),
+                "7",
+                null,
+                null
         ));
 
         assertEquals("etag", result.eTag());
         assertEquals("7", result.versionId());
+    }
+
+    @Test
+    void shouldFailSaveWhenExpectedVersionDoesNotMatchCurrentVersion() throws Exception {
+        Storage storage = mock(Storage.class);
+        Blob existingBlob = mock(Blob.class);
+        when(storage.get(eq(BlobId.of("bucket", "docs/a.txt")))).thenReturn(existingBlob);
+        when(existingBlob.getGeneration()).thenReturn(2L);
+
+        GcpProviderClient client = new GcpProviderClient(storage);
+
+        assertThrows(
+                ObjectStorageException.class,
+                () -> client.saveFile("bucket", new UploadFileRequest(
+                        "docs/a.txt",
+                        new ByteArrayInputStream(new byte[]{1, 2}),
+                        2L,
+                        "text/plain",
+                        Map.of(),
+                        "1",
+                        null,
+                        null
+                ))
+        );
+        verify(storage, never()).createFrom(any(BlobInfo.class), any(java.io.InputStream.class));
+    }
+
+    @Test
+    void shouldFailSaveWhenExpectedVersionProvidedButObjectDoesNotExist() throws Exception {
+        Storage storage = mock(Storage.class);
+        when(storage.get(eq(BlobId.of("bucket", "docs/a.txt")))).thenReturn(null);
+        GcpProviderClient client = new GcpProviderClient(storage);
+
+        assertThrows(
+                ObjectStorageException.class,
+                () -> client.saveFile("bucket", new UploadFileRequest(
+                        "docs/a.txt",
+                        new ByteArrayInputStream(new byte[]{1}),
+                        1L,
+                        "text/plain",
+                        Map.of(),
+                        "1",
+                        null,
+                        null
+                ))
+        );
     }
 
     @Test
@@ -63,7 +118,7 @@ class GcpProviderClientTest {
         when(blob.getContentType()).thenReturn("text/plain");
 
         GcpProviderClient client = new GcpProviderClient(storage);
-        RetrievedObject result = client.getFile("bucket", new GetFileRequest("docs/a.txt"));
+        RetrievedObject result = client.getFile("bucket", new GetFileRequest("docs/a.txt", null, null, null));
 
         assertEquals(3L, result.size());
         assertEquals("text/plain", result.contentType());
@@ -75,9 +130,27 @@ class GcpProviderClientTest {
         Storage storage = mock(Storage.class);
         GcpProviderClient client = new GcpProviderClient(storage);
 
-        client.deleteFile("bucket", new DeleteFileRequest("docs/a.txt"));
+        client.deleteFile("bucket", new DeleteFileRequest("docs/a.txt", null, null, null));
 
         verify(storage).delete(any(BlobId.class));
+    }
+
+    @Test
+    void shouldSupportVersionedGetAndDeleteRequests() {
+        Storage storage = mock(Storage.class);
+        Blob blob = mock(Blob.class);
+        ReadChannel channel = mock(ReadChannel.class);
+        when(storage.get(eq(BlobId.of("bucket", "docs/a.txt", 5L)))).thenReturn(blob);
+        when(blob.reader()).thenReturn(channel);
+        when(blob.getMetadata()).thenReturn(Map.of());
+        when(blob.getSize()).thenReturn(1L);
+        GcpProviderClient client = new GcpProviderClient(storage);
+
+        client.getFile("bucket", new GetFileRequest("docs/a.txt", "5", null, null));
+        client.deleteFile("bucket", new DeleteFileRequest("docs/a.txt", "5", null, null));
+
+        verify(storage).get(eq(BlobId.of("bucket", "docs/a.txt", 5L)));
+        verify(storage).delete(eq(BlobId.of("bucket", "docs/a.txt", 5L)));
     }
 
     @Test

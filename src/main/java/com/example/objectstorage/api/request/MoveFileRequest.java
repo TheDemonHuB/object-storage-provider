@@ -5,6 +5,7 @@ import com.example.objectstorage.core.ValidationUtils;
 
 public record MoveFileRequest(
         String sourceKey,
+        String sourceVersionId,
         String targetKey,
         StorageProvider sourceProvider,
         String sourceBucket,
@@ -13,12 +14,10 @@ public record MoveFileRequest(
 ) {
     public MoveFileRequest {
         sourceKey = ValidationUtils.requireNonBlank(sourceKey, "sourceKey");
+        sourceVersionId = ValidationUtils.normalizeToNull(sourceVersionId);
         targetKey = ValidationUtils.requireNonBlank(targetKey, "targetKey");
         sourceBucket = ValidationUtils.normalizeToNull(sourceBucket);
         targetBucket = ValidationUtils.normalizeToNull(targetBucket);
     }
 
-    public MoveFileRequest(String sourceKey, String targetKey) {
-        this(sourceKey, targetKey, null, null, null, null);
-    }
 }

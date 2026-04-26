@@ -7,12 +7,18 @@ import java.util.Objects;
 public record DeletedObject(
         StorageProvider provider,
         String bucket,
-        String key
+        String filePath,
+        String versionId
 ) {
-<span class="fc" id="L12">    public DeletedObject {</span>
-<span class="fc" id="L13">        Objects.requireNonNull(provider, &quot;provider must not be null&quot;);</span>
-<span class="fc" id="L14">        bucket = ValidationUtils.requireNonBlank(bucket, &quot;bucket&quot;);</span>
-<span class="fc" id="L15">        key = ValidationUtils.requireNonBlank(key, &quot;key&quot;);</span>
-<span class="fc" id="L16">    }</span>
+<span class="fc" id="L13">    public DeletedObject {</span>
+<span class="fc" id="L14">        Objects.requireNonNull(provider, &quot;provider must not be null&quot;);</span>
+<span class="fc" id="L15">        bucket = ValidationUtils.requireNonBlank(bucket, &quot;bucket&quot;);</span>
+<span class="fc" id="L16">        filePath = ValidationUtils.requireNonBlank(filePath, &quot;filePath&quot;);</span>
+<span class="fc" id="L17">        versionId = ValidationUtils.normalizeToNull(versionId);</span>
+<span class="fc" id="L18">    }</span>
+
+    public DeletedObject(StorageProvider provider, String bucket, String filePath) {
+<span class="nc" id="L21">        this(provider, bucket, filePath, null);</span>
+<span class="nc" id="L22">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

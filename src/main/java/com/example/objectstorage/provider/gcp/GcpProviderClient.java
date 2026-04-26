@@ -61,8 +61,9 @@ public final class GcpProviderClient implements ProviderClient {
     public StoredObject saveFile(String bucket, UploadFileRequest request) {
         String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
-        String key = request.key();
+        String key = request.filePath();
         return operations.executeKeyOperation(LOGGER, "upload stream", targetBucket, key, () -> {
+            operations.validateExpectedVersion(LOGGER, targetBucket, key, request.versionId(), () -> resolveCurrentVersionId(targetBucket, key));
             BlobInfo.Builder infoBuilder = BlobInfo.newBuilder(BlobId.of(targetBucket, key));
             if (request.contentType() != null) {
                 infoBuilder.setContentType(request.contentType());
@@ -93,9 +94,9 @@ public final class GcpProviderClient implements ProviderClient {
     public RetrievedObject getFile(String bucket, GetFileRequest request) {
         String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
-        String key = request.key();
+        String key = request.filePath();
         return operations.executeKeyOperation(LOGGER, "download stream", targetBucket, key, () -> {
-            Blob blob = storage.get(BlobId.of(targetBucket, key));
+            Blob blob = storage.get(resolveBlobId(targetBucket, key, request.versionId()));
             if (blob == null) {
                 throw new ObjectStorageException("GCP object not found: " + targetBucket + "/" + key);
             }
@@ -106,6 +107,7 @@ public final class GcpProviderClient implements ProviderClient {
                     provider(),
                     targetBucket,
                     key,
+                    blob.getGeneration() == null ? null : String.valueOf(blob.getGeneration()),
                     Channels.newInputStream(channel),
                     blob.getContentType(),
                     metadata,
@@ -125,9 +127,9 @@ public final class GcpProviderClient implements ProviderClient {
     public void deleteFile(String bucket, DeleteFileRequest request) {
         String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
-        String key = request.key();
+        String key = request.filePath();
         operations.executeVoidKeyOperation(LOGGER, "delete", targetBucket, key, () -> {
-            storage.delete(BlobId.of(targetBucket, key));
+            storage.delete(resolveBlobId(targetBucket, key, request.versionId()));
             LOGGER.info("GCP delete completed: bucket={}, key={}", targetBucket, key);
         });
     }
@@ -160,7 +162,8 @@ public final class GcpProviderClient implements ProviderClient {
         objects.add(new StorageObjectInfo(
                 key,
                 size == null ? 0 : size,
-                updatedAt == null ? null : Instant.from(updatedAt)
+                updatedAt == null ? null : Instant.from(updatedAt),
+                blob.getGeneration() == null ? null : String.valueOf(blob.getGeneration())
         ));
         return true;
     }
@@ -174,6 +177,7 @@ public final class GcpProviderClient implements ProviderClient {
 
     private BlobListOption[] createListOptions(String prefix, Integer maxResults) {
         List<BlobListOption> options = new ArrayList<>();
+        options.add(BlobListOption.versions(true));
         if (prefix != null) {
             options.add(BlobListOption.prefix(prefix));
         }
@@ -183,6 +187,17 @@ public final class GcpProviderClient implements ProviderClient {
         return options.toArray(BlobListOption[]::new);
     }
 
+
+    private BlobId resolveBlobId(String bucket, String key, String versionId) {
+        if (versionId == null) {
+            return BlobId.of(bucket, key);
+        }
+        try {
+            return BlobId.of(bucket, key, Long.parseLong(versionId));
+        } catch (NumberFormatException ex) {
+            throw new ObjectStorageException("Invalid GCP versionId for filePath " + key + ": " + versionId, ex);
+        }
+    }
     private Storage createStorageClient(GcpStorageConfig config) {
         try {
             StorageOptions.Builder optionsBuilder = StorageOptions.newBuilder();
@@ -215,4 +230,14 @@ public final class GcpProviderClient implements ProviderClient {
     private boolean isDirectoryMarker(String key) {
         return key != null && key.endsWith("/");
     }
+
+    private String resolveCurrentVersionId(String bucket, String key) {
+        Blob blob = storage.get(BlobId.of(bucket, key));
+        if (blob == null || blob.getGeneration() == null) {
+            return null;
+        }
+        return String.valueOf(blob.getGeneration());
+    }
 }
+
+

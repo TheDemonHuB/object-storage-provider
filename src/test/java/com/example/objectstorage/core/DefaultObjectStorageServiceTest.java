@@ -9,6 +9,7 @@ import com.example.objectstorage.api.StorageProvider;
 import com.example.objectstorage.api.request.CopyFileRequest;
 import com.example.objectstorage.api.request.DeleteFileRequest;
 import com.example.objectstorage.api.request.GetFileRequest;
+import com.example.objectstorage.api.request.GetVersionsRequest;
 import com.example.objectstorage.api.request.ListFilesRequest;
 import com.example.objectstorage.api.request.MoveFileRequest;
 import com.example.objectstorage.api.request.UploadFileRequest;
@@ -17,9 +18,7 @@ import com.example.objectstorage.api.response.RetrievedObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
 import java.io.ByteArrayInputStream;
-import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,11 +31,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
-class DefaultObjectStorageServiceTest {
-    private static final ZoneId TEST_ZONE = ZoneId.of("UTC");
-    private static final Clock TEST_CLOCK = Clock.fixed(Instant.parse("2026-04-26T09:15:30.123Z"), TEST_ZONE);
-    private static final String TEST_BASE_PATH = "documents";
-    private static final String TEST_PREFIX = "documents/2026/04/26/091530123";
+class DefaultObjectStorageServiceTest {    private static final String TEST_BASE_PATH = "documents";
+    private static final String TEST_PREFIX = "documents";
     private static final String TEST_BUCKET = "bucket";
 
     @Test
@@ -47,8 +43,8 @@ class DefaultObjectStorageServiceTest {
                 TEST_BUCKET
         );
 
-        RetrievedObject object = service.getFiles(List.of(new GetFileRequest("key"))).getFirst();
-        assertEquals("key", object.key());
+        RetrievedObject object = service.getFiles(List.of(new GetFileRequest("key", null, null, null))).getFirst();
+        assertEquals("key", object.filePath());
         assertEquals(StorageProvider.S3, object.provider());
     }
 
@@ -67,10 +63,10 @@ class DefaultObjectStorageServiceTest {
                 TEST_PREFIX + "/second.txt",
                 TEST_PREFIX + "/third.txt"
         ), storedObjects.stream()
-                .map(StoredObject::key)
+                .map(StoredObject::filePath)
                 .toList());
         assertEquals(List.of("first.txt", "second.txt", "third.txt"), storedObjects.stream()
-                .map(StoredObject::originalKey)
+                .map(StoredObject::originalFilePath)
                 .toList());
     }
 
@@ -87,13 +83,13 @@ class DefaultObjectStorageServiceTest {
         );
 
         List<RetrievedObject> objects = service.getFiles(List.of(
-                new GetFileRequest("first.txt"),
-                new GetFileRequest("second.txt"),
-                new GetFileRequest("third.txt")
+                new GetFileRequest("first.txt", null, null, null),
+                new GetFileRequest("second.txt", null, null, null),
+                new GetFileRequest("third.txt", null, null, null)
         ));
 
         assertEquals(List.of("first.txt", "second.txt", "third.txt"), objects.stream()
-                .map(RetrievedObject::key)
+                .map(RetrievedObject::filePath)
                 .toList());
     }
 
@@ -108,7 +104,7 @@ class DefaultObjectStorageServiceTest {
                 TEST_BUCKET
         );
 
-        RetrievedObject object = service.getFiles(List.of(new GetFileRequest("key", StorageProvider.GCP, "custom-bucket"))).getFirst();
+        RetrievedObject object = service.getFiles(List.of(new GetFileRequest("key", null, StorageProvider.GCP, "custom-bucket"))).getFirst();
 
         assertEquals(StorageProvider.GCP, object.provider());
         assertEquals("custom-bucket", object.bucket());
@@ -126,7 +122,7 @@ class DefaultObjectStorageServiceTest {
         );
 
         DeletedObject object = service.deleteFiles(
-                List.of(new DeleteFileRequest("key", StorageProvider.GCP, "custom-bucket"))
+                List.of(new DeleteFileRequest("key", null, StorageProvider.GCP, "custom-bucket"))
         ).getFirst();
 
         assertEquals(StorageProvider.GCP, object.provider());
@@ -162,12 +158,12 @@ class DefaultObjectStorageServiceTest {
         );
 
         List<DeletedObject> deletedObjects = service.deleteFiles(List.of(
-                new DeleteFileRequest("first.txt"),
-                new DeleteFileRequest("second.txt")
+                new DeleteFileRequest("first.txt", null, null, null),
+                new DeleteFileRequest("second.txt", null, null, null)
         ));
 
         assertEquals(List.of("first.txt", "second.txt"), deletedObjects.stream()
-                .map(DeletedObject::key)
+                .map(DeletedObject::filePath)
                 .toList());
     }
 
@@ -183,6 +179,7 @@ class DefaultObjectStorageServiceTest {
 
         StoredObject copied = service.copyFiles(List.of(new CopyFileRequest(
                 "source/report.pdf",
+                null,
                 "target/report.pdf",
                 StorageProvider.S3,
                 "source-bucket",
@@ -192,8 +189,8 @@ class DefaultObjectStorageServiceTest {
 
         assertEquals(StorageProvider.GCP, copied.provider());
         assertEquals("target-bucket", copied.bucket());
-        assertEquals("source/report.pdf", copied.originalKey());
-        assertEquals("target/report.pdf", copied.key());
+        assertEquals("source/report.pdf", copied.originalFilePath());
+        assertEquals("target/report.pdf", copied.filePath());
         assertEquals("source/report.pdf", s3Provider.requestedGetKeys().getFirst());
         assertEquals("target/report.pdf", gcpProvider.savedKeys().getFirst());
         assertEquals(List.of(), s3Provider.deletedKeys());
@@ -211,6 +208,7 @@ class DefaultObjectStorageServiceTest {
 
         StoredObject moved = service.moveFiles(List.of(new MoveFileRequest(
                 "source/archive.zip",
+                null,
                 "target/archive.zip",
                 StorageProvider.S3,
                 "source-bucket",
@@ -220,8 +218,8 @@ class DefaultObjectStorageServiceTest {
 
         assertEquals(StorageProvider.AZURE, moved.provider());
         assertEquals("target-bucket", moved.bucket());
-        assertEquals("source/archive.zip", moved.originalKey());
-        assertEquals("target/archive.zip", moved.key());
+        assertEquals("source/archive.zip", moved.originalFilePath());
+        assertEquals("target/archive.zip", moved.filePath());
         assertEquals("source/archive.zip", s3Provider.requestedGetKeys().getFirst());
         assertEquals("source/archive.zip", s3Provider.deletedKeys().getFirst());
         assertEquals("target/archive.zip", azureProvider.savedKeys().getFirst());
@@ -241,6 +239,7 @@ class DefaultObjectStorageServiceTest {
                 ObjectStorageException.class,
                 () -> service.moveFiles(List.of(new MoveFileRequest(
                         "source/archive.zip",
+                        null,
                         "target/archive.zip",
                         StorageProvider.S3,
                         "source-bucket",
@@ -271,9 +270,7 @@ class DefaultObjectStorageServiceTest {
                         2,
                         null,
                         null,
-                        TEST_BASE_PATH,
-                        TEST_ZONE,
-                        TEST_CLOCK
+                        TEST_BASE_PATH
                 )
         );
 
@@ -298,9 +295,7 @@ class DefaultObjectStorageServiceTest {
                         5,
                         null,
                         null,
-                        TEST_BASE_PATH,
-                        TEST_ZONE,
-                        TEST_CLOCK
+                        TEST_BASE_PATH
                 )
         );
 
@@ -324,9 +319,7 @@ class DefaultObjectStorageServiceTest {
                         null,
                         null,
                         null,
-                        TEST_BASE_PATH,
-                        TEST_ZONE,
-                        TEST_CLOCK
+                        TEST_BASE_PATH
                 )
         );
 
@@ -336,7 +329,24 @@ class DefaultObjectStorageServiceTest {
     }
 
     @Test
-    void shouldRenameDuplicateFilenamesWithinSameSaveCall() {
+    void shouldReturnAllVersionsForExactFilePath() {
+        TrackingVersionsProviderClient provider = new TrackingVersionsProviderClient(StorageProvider.S3);
+        DefaultObjectStorageService service = new DefaultObjectStorageService(
+                Map.of(StorageProvider.S3, provider),
+                StorageProvider.S3,
+                TEST_BUCKET
+        );
+
+        List<StorageObjectInfo> versions = service.getVersions(new GetVersionsRequest("docs/a.txt", null, null));
+
+        assertEquals(2, versions.size());
+        assertEquals("v2", versions.getFirst().versionId());
+        assertEquals("docs/a.txt", provider.lastListRequest().prefix());
+        assertNull(provider.lastListRequest().maxResults());
+    }
+
+    @Test
+    void shouldKeepSameFilePathForDuplicatesAndRelyOnProviderVersioning() {
         DefaultObjectStorageService service = createService(new StubProviderClient(StorageProvider.S3), 5, 2, 5);
 
         List<StoredObject> storedObjects = service.saveFiles(List.of(
@@ -347,15 +357,15 @@ class DefaultObjectStorageServiceTest {
 
         assertEquals(List.of(
                 TEST_PREFIX + "/customer-123/invoice.pdf",
-                TEST_PREFIX + "/customer-123/1_invoice.pdf",
-                TEST_PREFIX + "/customer-123/2_invoice.pdf"
-        ), storedObjects.stream().map(StoredObject::key).toList());
+                TEST_PREFIX + "/customer-123/invoice.pdf",
+                TEST_PREFIX + "/customer-123/invoice.pdf"
+        ), storedObjects.stream().map(StoredObject::filePath).toList());
         assertEquals(List.of(
                 "customer-123/invoice.pdf",
                 "customer-123/invoice.pdf",
                 "customer-123/invoice.pdf"
-        ), storedObjects.stream().map(StoredObject::originalKey).toList());
-        assertEquals(List.of("invoice.pdf", "1_invoice.pdf", "2_invoice.pdf"), storedObjects.stream()
+        ), storedObjects.stream().map(StoredObject::originalFilePath).toList());
+        assertEquals(List.of("invoice.pdf", "invoice.pdf", "invoice.pdf"), storedObjects.stream()
                 .map(StoredObject::storedFilename)
                 .toList());
     }
@@ -374,9 +384,7 @@ class DefaultObjectStorageServiceTest {
                         null,
                         Set.of("pdf"),
                         null,
-                        TEST_BASE_PATH,
-                        TEST_ZONE,
-                        TEST_CLOCK
+                        TEST_BASE_PATH
                 )
         );
         UploadFileRequest disallowedRequest = uploadRequest("note.txt");
@@ -404,9 +412,7 @@ class DefaultObjectStorageServiceTest {
                         null,
                         null,
                         1L,
-                        TEST_BASE_PATH,
-                        TEST_ZONE,
-                        TEST_CLOCK
+                        TEST_BASE_PATH
                 )
         );
         UploadFileRequest oversizedRequest = new UploadFileRequest(
@@ -414,7 +420,10 @@ class DefaultObjectStorageServiceTest {
                 new ByteArrayInputStream(new byte[]{1, 2}),
                 2L,
                 "application/octet-stream",
-                Map.of()
+                Map.of(),
+                null,
+                null,
+                null
         );
         List<UploadFileRequest> saveRequests = List.of(oversizedRequest);
 
@@ -469,7 +478,7 @@ class DefaultObjectStorageServiceTest {
                 TEST_BUCKET
         );
         List<GetFileRequest> requests = java.util.Arrays.asList(
-                new GetFileRequest("first.txt"),
+                new GetFileRequest("first.txt", null, null, null),
                 null
         );
 
@@ -512,10 +521,10 @@ class DefaultObjectStorageServiceTest {
                 4
         );
         List<GetFileRequest> requests = List.of(
-                new GetFileRequest("first.txt"),
-                new GetFileRequest("second.txt"),
-                new GetFileRequest("third.txt"),
-                new GetFileRequest("fourth.txt")
+                new GetFileRequest("first.txt", null, null, null),
+                new GetFileRequest("second.txt", null, null, null),
+                new GetFileRequest("third.txt", null, null, null),
+                new GetFileRequest("fourth.txt", null, null, null)
         );
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
@@ -563,14 +572,20 @@ class DefaultObjectStorageServiceTest {
                 new ByteArrayInputStream(new byte[]{1}),
                 1L,
                 "application/octet-stream",
-                Map.of()
+                Map.of(),
+                null,
+                null,
+                null
         );
         UploadFileRequest secondRequest = new UploadFileRequest(
                 "second.txt",
                 new ByteArrayInputStream(new byte[]{2}),
                 1L,
                 "application/octet-stream",
-                Map.of()
+                Map.of(),
+                null,
+                null,
+                null
         );
 
         ExecutorService executorService = Executors.newFixedThreadPool(2);
@@ -612,7 +627,10 @@ class DefaultObjectStorageServiceTest {
                 new ByteArrayInputStream(new byte[]{1}),
                 1L,
                 "application/octet-stream",
-                Map.of()
+                Map.of(),
+                null,
+                null,
+                null
         );
     }
 
@@ -644,9 +662,7 @@ class DefaultObjectStorageServiceTest {
                         null,
                         null,
                         null,
-                        TEST_BASE_PATH,
-                        TEST_ZONE,
-                        TEST_CLOCK
+                        TEST_BASE_PATH
                 )
         );
     }
@@ -666,7 +682,7 @@ class DefaultObjectStorageServiceTest {
                 StorageProvider.S3,
                 TEST_BUCKET,
                 0,
-                new DefaultObjectStorageService.ServiceSettings(0, 1, 500, null, null, null, null, TEST_ZONE, TEST_CLOCK)
+                new DefaultObjectStorageService.ServiceSettings(0, 1, 500, null, null, null, null)
         );
     }
 
@@ -676,7 +692,7 @@ class DefaultObjectStorageServiceTest {
                 StorageProvider.S3,
                 TEST_BUCKET,
                 0,
-                new DefaultObjectStorageService.ServiceSettings(100, 0, 500, null, null, null, null, TEST_ZONE, TEST_CLOCK)
+                new DefaultObjectStorageService.ServiceSettings(100, 0, 500, null, null, null, null)
         );
     }
 
@@ -686,7 +702,7 @@ class DefaultObjectStorageServiceTest {
                 StorageProvider.S3,
                 TEST_BUCKET,
                 0,
-                new DefaultObjectStorageService.ServiceSettings(100, 1, 0, null, null, null, null, TEST_ZONE, TEST_CLOCK)
+                new DefaultObjectStorageService.ServiceSettings(100, 1, 0, null, null, null, null)
         );
     }
 
@@ -803,16 +819,16 @@ class DefaultObjectStorageServiceTest {
 
         @Override
         public StoredObject saveFile(String bucket, UploadFileRequest request) {
-            if (request.key().endsWith("/" + failingKey) || request.key().equals(failingKey)) {
+            if (request.filePath().endsWith("/" + failingKey) || request.filePath().equals(failingKey)) {
                 throw new ObjectStorageException("Simulated save failure");
             }
-            savedKeys.add(request.key());
+            savedKeys.add(request.filePath());
             return super.saveFile(bucket, request);
         }
 
         @Override
         public void deleteFile(String bucket, DeleteFileRequest request) {
-            deletedKeys.add(request.key());
+            deletedKeys.add(request.filePath());
         }
 
         private List<String> savedKeys() {
@@ -853,27 +869,28 @@ class DefaultObjectStorageServiceTest {
 
         @Override
         public RetrievedObject getFile(String bucket, GetFileRequest request) {
-            requestedGetKeys.add(request.key());
+            requestedGetKeys.add(request.filePath());
             return new RetrievedObject(
                     provider(),
                     bucket,
-                    request.key(),
+                    request.filePath(),
+                    null,
                     new ByteArrayInputStream(new byte[]{1, 2, 3}),
                     "application/octet-stream",
-                    Map.of("copied-from", request.key()),
+                    Map.of("copied-from", request.filePath()),
                     3L
             );
         }
 
         @Override
         public StoredObject saveFile(String bucket, UploadFileRequest request) {
-            savedKeys.add(request.key());
-            return new StoredObject(provider(), bucket, request.key(), "etag-copy", null);
+            savedKeys.add(request.filePath());
+            return new StoredObject(provider(), bucket, request.filePath(), "etag-copy", null);
         }
 
         @Override
         public void deleteFile(String bucket, DeleteFileRequest request) {
-            deletedKeys.add(request.key());
+            deletedKeys.add(request.filePath());
         }
 
         private List<String> requestedGetKeys() {
@@ -899,21 +916,22 @@ class DefaultObjectStorageServiceTest {
 
         @Override
         public RetrievedObject getFile(String bucket, GetFileRequest request) {
-            requestedGetKeys.add(request.key());
+            requestedGetKeys.add(request.filePath());
             return new RetrievedObject(
                     provider(),
                     bucket,
-                    request.key(),
+                    request.filePath(),
+                    null,
                     new ByteArrayInputStream(new byte[]{1, 2, 3}),
                     "application/octet-stream",
-                    Map.of("copied-from", request.key()),
+                    Map.of("copied-from", request.filePath()),
                     3L
             );
         }
 
         @Override
         public void deleteFile(String bucket, DeleteFileRequest request) {
-            deletedKeys.add(request.key());
+            deletedKeys.add(request.filePath());
             throw new ObjectStorageException("Simulated source delete failure");
         }
 
@@ -926,4 +944,30 @@ class DefaultObjectStorageServiceTest {
             return List.copyOf(requestedGetKeys);
         }
     }
+
+    private static final class TrackingVersionsProviderClient extends StubProviderClient {
+        private ListFilesRequest lastListRequest;
+
+        private TrackingVersionsProviderClient(StorageProvider provider) {
+            super(provider);
+        }
+
+        @Override
+        public List<StorageObjectInfo> listFiles(String bucket, ListFilesRequest request) {
+            this.lastListRequest = request;
+            return List.of(
+                    new StorageObjectInfo("docs/a.txt", 11L, Instant.parse("2026-01-01T00:00:00Z"), "v2"),
+                    new StorageObjectInfo("docs/a.txt", 9L, Instant.parse("2026-01-01T00:00:00Z"), "v1"),
+                    new StorageObjectInfo("docs/a.txt.bak", 7L, Instant.parse("2026-01-01T00:00:00Z"), "x1")
+            );
+        }
+
+        private ListFilesRequest lastListRequest() {
+            return lastListRequest;
+        }
+    }
 }
+
+
+
+

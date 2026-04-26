@@ -20,6 +20,7 @@ com\example\objectstorage\api\request\MoveFileRequest.class
 com\example\objectstorage\core\ProviderClient.class
 com\example\objectstorage\api\StorageProvider.class
 com\example\objectstorage\core\ProviderClientSupport.class
+com\example\objectstorage\api\request\GetVersionsRequest.class
 com\example\objectstorage\api\response\DeletedObject.class
 com\example\objectstorage\core\ObjectStorageException.class
 com\example\objectstorage\config\GcpStorageConfig.class

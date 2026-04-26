@@ -74,4 +74,43 @@ public final class ProviderClientSupport {
         }
     }
 
+    public void validateExpectedVersion(
+            Logger logger,
+            String bucket,
+            String key,
+            String expectedVersionId,
+            Supplier<String> currentVersionSupplier
+    ) {
+        if (expectedVersionId == null) {
+            return;
+        }
+        String currentVersionId;
+        try {
+            currentVersionId = currentVersionSupplier.get();
+        } catch (ObjectStorageException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            throw new ObjectStorageException(
+                    providerName + " version precondition check failed for " + bucketLabel + "/key: " + bucket + "/" + key,
+                    ex
+            );
+        }
+        if (!expectedVersionId.equals(currentVersionId)) {
+            throw new ObjectStorageException(
+                    providerName + " save version mismatch for " + bucketLabel + "/key "
+                            + bucket + "/" + key
+                            + ": expectedVersionId=" + expectedVersionId
+                            + ", currentVersionId=" + currentVersionId
+            );
+        }
+        logger.debug(
+                "{} save version precondition passed: {}={}, key={}, versionId={}",
+                providerName,
+                bucketLabel,
+                bucket,
+                key,
+                expectedVersionId
+        );
+    }
+
 }

@@ -6,6 +6,8 @@ import com.azure.storage.blob.BlobServiceClient;
 import com.azure.storage.blob.BlobServiceClientBuilder;
 import com.azure.storage.blob.models.BlobHttpHeaders;
 import com.azure.storage.blob.models.BlobItem;
+import com.azure.storage.blob.models.BlobListDetails;
+import com.azure.storage.blob.models.BlobStorageException;
 import com.azure.storage.blob.models.BlobProperties;
 import com.azure.storage.blob.models.ListBlobsOptions;
 import com.azure.storage.blob.specialized.BlobInputStream;
@@ -55,9 +57,10 @@ public final class AzureBlobProviderClient implements ProviderClient {
     public StoredObject saveFile(String bucket, UploadFileRequest request) {
         String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
-        String key = request.key();
+        String key = request.filePath();
         return operations.executeKeyOperation(LOGGER, "upload stream", targetBucket, key, () -> {
-            BlobClient blobClient = resolveBlobClient(targetBucket, key);
+            operations.validateExpectedVersion(LOGGER, targetBucket, key, request.versionId(), () -> resolveCurrentVersionId(targetBucket, key));
+            BlobClient blobClient = resolveBlobClient(targetBucket, key, null);
             try (var input = request.content()) {
                 blobClient.upload(input, request.contentLength(), true);
             } catch (Exception ex) {
@@ -80,7 +83,7 @@ public final class AzureBlobProviderClient implements ProviderClient {
                     targetBucket,
                     key,
                     properties.getETag(),
-                    null
+                    properties.getVersionId()
             );
             LOGGER.info("Azure upload stream completed: container={}, key={}, size={}", targetBucket, key, request.contentLength());
             return storedObject;
@@ -91,9 +94,9 @@ public final class AzureBlobProviderClient implements ProviderClient {
     public RetrievedObject getFile(String bucket, GetFileRequest request) {
         String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
-        String key = request.key();
+        String key = request.filePath();
         return operations.executeKeyOperation(LOGGER, "download stream", targetBucket, key, () -> {
-            BlobClient blobClient = resolveBlobClient(targetBucket, key);
+            BlobClient blobClient = resolveBlobClient(targetBucket, key, request.versionId());
             BlobProperties properties = blobClient.getProperties();
             BlobInputStream stream = blobClient.openInputStream();
 
@@ -105,6 +108,7 @@ public final class AzureBlobProviderClient implements ProviderClient {
                     provider(),
                     targetBucket,
                     key,
+                    properties.getVersionId(),
                     stream,
                     properties.getContentType(),
                     metadata,
@@ -119,9 +123,9 @@ public final class AzureBlobProviderClient implements ProviderClient {
     public void deleteFile(String bucket, DeleteFileRequest request) {
         String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
-        String key = request.key();
+        String key = request.filePath();
         operations.executeVoidKeyOperation(LOGGER, "delete", targetBucket, key, () -> {
-            resolveBlobClient(targetBucket, key).deleteIfExists();
+            resolveBlobClient(targetBucket, key, request.versionId()).deleteIfExists();
             LOGGER.info("Azure delete completed: container={}, key={}", targetBucket, key);
         });
     }
@@ -138,6 +142,7 @@ public final class AzureBlobProviderClient implements ProviderClient {
             if (prefix != null) {
                 options.setPrefix(prefix);
             }
+            options.setDetails(new BlobListDetails().setRetrieveVersions(true));
 
             List<StorageObjectInfo> objects = new ArrayList<>();
             for (BlobItem item : containerClient.listBlobs(options, null)) {
@@ -158,7 +163,8 @@ public final class AzureBlobProviderClient implements ProviderClient {
         objects.add(new StorageObjectInfo(
                 key,
                 size,
-                item.getProperties().getLastModified() == null ? null : item.getProperties().getLastModified().toInstant()
+                item.getProperties().getLastModified() == null ? null : item.getProperties().getLastModified().toInstant(),
+                item.getVersionId()
         ));
         return true;
     }
@@ -174,11 +180,26 @@ public final class AzureBlobProviderClient implements ProviderClient {
         return blobServiceClient.getBlobContainerClient(bucket);
     }
 
-    private BlobClient resolveBlobClient(String bucket, String key) {
-        return resolveContainerClient(bucket).getBlobClient(key);
+    private BlobClient resolveBlobClient(String bucket, String key, String versionId) {
+        BlobClient blobClient = resolveContainerClient(bucket).getBlobClient(key);
+        return versionId == null ? blobClient : blobClient.getVersionClient(versionId);
     }
 
     private boolean isDirectoryMarker(String key) {
         return key != null && key.endsWith("/");
     }
+
+    private String resolveCurrentVersionId(String bucket, String key) {
+        BlobClient blobClient = resolveBlobClient(bucket, key, null);
+        try {
+            return blobClient.getProperties().getVersionId();
+        } catch (BlobStorageException ex) {
+            if (ex.getStatusCode() == 404) {
+                return null;
+            }
+            throw ex;
+        }
+    }
 }
+
+

@@ -3,12 +3,17 @@
 import com.example.objectstorage.core.ValidationUtils;
 import java.time.Instant;
 
-public record StorageObjectInfo(String key, long size, Instant lastModified) {
+public record StorageObjectInfo(String filePath, long size, Instant lastModified, String versionId) {
 <span class="fc" id="L7">    public StorageObjectInfo {</span>
-<span class="fc" id="L8">        key = ValidationUtils.requireNonBlank(key, &quot;key&quot;);</span>
+<span class="fc" id="L8">        filePath = ValidationUtils.requireNonBlank(filePath, &quot;filePath&quot;);</span>
 <span class="pc bpc" id="L9" title="1 of 2 branches missed.">        if (size &lt; 0) {</span>
 <span class="nc" id="L10">            throw new IllegalArgumentException(&quot;size must not be negative&quot;);</span>
         }
-<span class="fc" id="L12">    }</span>
+<span class="fc" id="L12">        versionId = ValidationUtils.normalizeToNull(versionId);</span>
+<span class="fc" id="L13">    }</span>
+
+    public StorageObjectInfo(String filePath, long size, Instant lastModified) {
+<span class="fc" id="L16">        this(filePath, size, lastModified, null);</span>
+<span class="fc" id="L17">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

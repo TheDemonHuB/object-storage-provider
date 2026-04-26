@@ -7,8 +7,8 @@ import java.util.Objects;
 public record StoredObject(
         StorageProvider provider,
         String bucket,
-        String originalKey,
-        String key,
+        String originalFilePath,
+        String filePath,
         String originalFilename,
         String storedFilename,
         String eTag,
@@ -17,31 +17,31 @@ public record StoredObject(
 <span class="fc" id="L17">    public StoredObject {</span>
 <span class="fc" id="L18">        Objects.requireNonNull(provider, &quot;provider must not be null&quot;);</span>
 <span class="fc" id="L19">        bucket = ValidationUtils.requireNonBlank(bucket, &quot;bucket&quot;);</span>
-<span class="fc" id="L20">        originalKey = ValidationUtils.requireNonBlank(originalKey, &quot;originalKey&quot;);</span>
-<span class="fc" id="L21">        key = ValidationUtils.requireNonBlank(key, &quot;key&quot;);</span>
+<span class="fc" id="L20">        originalFilePath = ValidationUtils.requireNonBlank(originalFilePath, &quot;originalFilePath&quot;);</span>
+<span class="fc" id="L21">        filePath = ValidationUtils.requireNonBlank(filePath, &quot;filePath&quot;);</span>
 <span class="fc" id="L22">        originalFilename = ValidationUtils.requireNonBlank(originalFilename, &quot;originalFilename&quot;);</span>
 <span class="fc" id="L23">        storedFilename = ValidationUtils.requireNonBlank(storedFilename, &quot;storedFilename&quot;);</span>
 <span class="fc" id="L24">        eTag = ValidationUtils.normalizeToNull(eTag);</span>
 <span class="fc" id="L25">        versionId = ValidationUtils.normalizeToNull(versionId);</span>
 <span class="fc" id="L26">    }</span>
 
-    public StoredObject(StorageProvider provider, String bucket, String key, String eTag, String versionId) {
+    public StoredObject(StorageProvider provider, String bucket, String filePath, String eTag, String versionId) {
 <span class="fc" id="L29">        this(</span>
                 provider,
                 bucket,
-                key,
-                key,
-<span class="fc" id="L34">                extractFilename(key),</span>
-<span class="fc" id="L35">                extractFilename(key),</span>
+                filePath,
+                filePath,
+<span class="fc" id="L34">                extractFilename(filePath),</span>
+<span class="fc" id="L35">                extractFilename(filePath),</span>
                 eTag,
                 versionId
         );
 <span class="fc" id="L39">    }</span>
 
-    private static String extractFilename(String key) {
-<span class="fc" id="L42">        String normalizedKey = ValidationUtils.requireNonBlank(key, &quot;key&quot;);</span>
-<span class="fc" id="L43">        int lastSlash = normalizedKey.lastIndexOf('/');</span>
-<span class="fc bfc" id="L44" title="All 2 branches covered.">        return lastSlash &gt;= 0 ? normalizedKey.substring(lastSlash + 1) : normalizedKey;</span>
+    private static String extractFilename(String filePath) {
+<span class="fc" id="L42">        String normalizedFilePath = ValidationUtils.requireNonBlank(filePath, &quot;filePath&quot;);</span>
+<span class="fc" id="L43">        int lastSlash = normalizedFilePath.lastIndexOf('/');</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        return lastSlash &gt;= 0 ? normalizedFilePath.substring(lastSlash + 1) : normalizedFilePath;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

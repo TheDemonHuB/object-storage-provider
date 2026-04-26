@@ -25,12 +25,12 @@ class ProviderClientTest {
 
             @Override
             public StoredObject saveFile(String bucket, UploadFileRequest request) {
-                return new StoredObject(StorageProvider.S3, bucket, request.key(), "etag", null);
+                return new StoredObject(StorageProvider.S3, bucket, request.filePath(), "etag", null);
             }
 
             @Override
             public RetrievedObject getFile(String bucket, GetFileRequest request) {
-                return new RetrievedObject(StorageProvider.S3, bucket, request.key(), new ByteArrayInputStream(new byte[]{1}), null, Map.of(), 1L);
+                return new RetrievedObject(StorageProvider.S3, bucket, request.filePath(), null, new ByteArrayInputStream(new byte[]{1}), null, Map.of(), 1L);
             }
 
             @Override
@@ -47,3 +47,4 @@ class ProviderClientTest {
         assertDoesNotThrow(client::close);
     }
 }
+

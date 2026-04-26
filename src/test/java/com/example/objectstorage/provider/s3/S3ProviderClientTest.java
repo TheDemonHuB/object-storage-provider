@@ -2,8 +2,10 @@ package com.example.objectstorage.provider.s3;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -16,6 +18,7 @@ import com.example.objectstorage.api.request.UploadFileRequest;
 import com.example.objectstorage.api.response.RetrievedObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
+import com.example.objectstorage.core.ObjectStorageException;
 import java.io.ByteArrayInputStream;
 import java.time.Instant;
 import java.util.List;
@@ -27,16 +30,22 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectVersionsResponse;
+import software.amazon.awssdk.services.s3.model.ListObjectVersionsRequest;
+import software.amazon.awssdk.services.s3.model.ObjectVersion;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
-import software.amazon.awssdk.services.s3.model.S3Object;
 
 class S3ProviderClientTest {
     @Test
     void shouldSaveFile() {
         S3Client s3Client = mock(S3Client.class);
+        when(s3Client.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(
+                ListObjectVersionsResponse.builder()
+                        .versions(ObjectVersion.builder().key("customer/a.txt").versionId("v1").build())
+                        .isTruncated(false)
+                        .build()
+        );
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenReturn(PutObjectResponse.builder().eTag("etag").versionId("v1").build());
 
@@ -45,6 +54,33 @@ class S3ProviderClientTest {
 
         assertEquals("etag", result.eTag());
         assertEquals("v1", result.versionId());
+    }
+
+    @Test
+    void shouldFailSaveWhenExpectedVersionDoesNotMatchCurrentVersion() {
+        S3Client s3Client = mock(S3Client.class);
+        when(s3Client.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(
+                ListObjectVersionsResponse.builder()
+                        .versions(ObjectVersion.builder().key("customer/a.txt").versionId("v2").build())
+                        .isTruncated(false)
+                        .build()
+        );
+        S3ProviderClient client = new S3ProviderClient(s3Client);
+
+        assertThrows(
+                ObjectStorageException.class,
+                () -> client.saveFile("docs", new UploadFileRequest(
+                        "customer/a.txt",
+                        new ByteArrayInputStream(new byte[]{1, 2, 3}),
+                        3L,
+                        "text/plain",
+                        Map.of(),
+                        "v1",
+                        null,
+                        null
+                ))
+        );
+        verify(s3Client, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class));
     }
 
     @Test
@@ -61,7 +97,7 @@ class S3ProviderClientTest {
         when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(stream);
 
         S3ProviderClient client = new S3ProviderClient(s3Client);
-        RetrievedObject result = client.getFile("docs", new GetFileRequest("customer/a.txt"));
+        RetrievedObject result = client.getFile("docs", new GetFileRequest("customer/a.txt", null, null, null));
 
         assertEquals(4L, result.size());
         assertEquals("text/plain", result.contentType());
@@ -73,56 +109,103 @@ class S3ProviderClientTest {
         S3Client s3Client = mock(S3Client.class);
         S3ProviderClient client = new S3ProviderClient(s3Client);
 
-        client.deleteFile("docs", new DeleteFileRequest("customer/a.txt"));
+        client.deleteFile("docs", new DeleteFileRequest("customer/a.txt", null, null, null));
 
         verify(s3Client).deleteObject(any(DeleteObjectRequest.class));
     }
 
     @Test
+    void shouldSupportVersionedGetAndDeleteRequests() {
+        S3Client s3Client = mock(S3Client.class);
+        GetObjectResponse response = GetObjectResponse.builder().contentLength(1L).build();
+        @SuppressWarnings("unchecked")
+        ResponseInputStream<GetObjectResponse> stream = mock(ResponseInputStream.class);
+        when(stream.response()).thenReturn(response);
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(stream);
+        S3ProviderClient client = new S3ProviderClient(s3Client);
+
+        client.getFile("docs", new GetFileRequest("customer/a.txt", "v5", null, null));
+        client.deleteFile("docs", new DeleteFileRequest("customer/a.txt", "v5", null, null));
+
+        verify(s3Client).getObject(any(GetObjectRequest.class));
+        verify(s3Client).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    void shouldFailSaveWhenExpectedVersionIsProvidedButNoCurrentVersionExists() {
+        S3Client s3Client = mock(S3Client.class);
+        when(s3Client.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(
+                ListObjectVersionsResponse.builder()
+                        .versions(List.of())
+                        .isTruncated(false)
+                        .build()
+        );
+        S3ProviderClient client = new S3ProviderClient(s3Client);
+
+        assertThrows(
+                ObjectStorageException.class,
+                () -> client.saveFile("docs", new UploadFileRequest(
+                        "customer/a.txt",
+                        new ByteArrayInputStream(new byte[]{1}),
+                        1L,
+                        "text/plain",
+                        Map.of(),
+                        "v1",
+                        null,
+                        null
+                ))
+        );
+        verify(s3Client, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+    @Test
     void shouldListFiles() {
         S3Client s3Client = mock(S3Client.class);
-        ListObjectsV2Response response = ListObjectsV2Response.builder()
-                .contents(
-                        S3Object.builder().key("customer/").size(0L).lastModified(Instant.parse("2026-01-01T00:00:00Z")).build(),
-                        S3Object.builder().key("customer/a.txt").size(12L).lastModified(Instant.parse("2026-01-01T00:00:00Z")).build(),
-                        S3Object.builder().key("customer/b.txt").size(8L).lastModified(Instant.parse("2026-01-02T00:00:00Z")).build()
+        ListObjectVersionsResponse response = ListObjectVersionsResponse.builder()
+                .versions(
+                        ObjectVersion.builder().key("customer/").size(0L).lastModified(Instant.parse("2026-01-01T00:00:00Z")).versionId("v0").build(),
+                        ObjectVersion.builder().key("customer/a.txt").size(12L).lastModified(Instant.parse("2026-01-01T00:00:00Z")).versionId("v1").build(),
+                        ObjectVersion.builder().key("customer/b.txt").size(8L).lastModified(Instant.parse("2026-01-02T00:00:00Z")).versionId("v2").build()
                 )
                 .build();
-        when(s3Client.listObjectsV2(any(ListObjectsV2Request.class))).thenReturn(response);
+        when(s3Client.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(response);
 
         S3ProviderClient client = new S3ProviderClient(s3Client);
         List<StorageObjectInfo> result = client.listFiles("docs", new ListFilesRequest("customer/", 10));
 
         assertEquals(2, result.size());
-        assertEquals("customer/a.txt", result.getFirst().key());
+        assertEquals("customer/a.txt", result.getFirst().filePath());
+        assertEquals("v1", result.getFirst().versionId());
         assertEquals(8L, result.get(1).size());
     }
 
     @Test
     void shouldListFilesAcrossPagesWhenMaxResultsNotProvided() {
         S3Client s3Client = mock(S3Client.class);
-        ListObjectsV2Response firstPage = ListObjectsV2Response.builder()
-                .contents(
-                        S3Object.builder().key("customer/a.txt").size(12L).lastModified(Instant.parse("2026-01-01T00:00:00Z")).build(),
-                        S3Object.builder().key("customer/b.txt").size(8L).lastModified(Instant.parse("2026-01-02T00:00:00Z")).build()
+        ListObjectVersionsResponse firstPage = ListObjectVersionsResponse.builder()
+                .versions(
+                        ObjectVersion.builder().key("customer/a.txt").size(12L).lastModified(Instant.parse("2026-01-01T00:00:00Z")).versionId("v1").build(),
+                        ObjectVersion.builder().key("customer/b.txt").size(8L).lastModified(Instant.parse("2026-01-02T00:00:00Z")).versionId("v2").build()
                 )
                 .isTruncated(true)
-                .nextContinuationToken("next-token")
+                .nextKeyMarker("next-key")
+                .nextVersionIdMarker("next-version")
                 .build();
-        ListObjectsV2Response secondPage = ListObjectsV2Response.builder()
-                .contents(
-                        S3Object.builder().key("customer/c.txt").size(3L).lastModified(Instant.parse("2026-01-03T00:00:00Z")).build()
+        ListObjectVersionsResponse secondPage = ListObjectVersionsResponse.builder()
+                .versions(
+                        ObjectVersion.builder().key("customer/c.txt").size(3L).lastModified(Instant.parse("2026-01-03T00:00:00Z")).versionId("v3").build()
                 )
                 .isTruncated(false)
                 .build();
-        when(s3Client.listObjectsV2(any(ListObjectsV2Request.class))).thenReturn(firstPage, secondPage);
+        when(s3Client.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(firstPage, secondPage);
 
         S3ProviderClient client = new S3ProviderClient(s3Client);
         List<StorageObjectInfo> result = client.listFiles("docs", new ListFilesRequest(null, null));
 
         assertEquals(3, result.size());
-        assertEquals("customer/c.txt", result.get(2).key());
-        verify(s3Client, times(2)).listObjectsV2(any(ListObjectsV2Request.class));
+        assertEquals("customer/c.txt", result.get(2).filePath());
+        assertEquals("v3", result.get(2).versionId());
+        verify(s3Client, times(2)).listObjectVersions(any(ListObjectVersionsRequest.class));
     }
 
     @Test
@@ -148,7 +231,11 @@ class S3ProviderClientTest {
                 new ByteArrayInputStream(new byte[]{1, 2, 3}),
                 3L,
                 "text/plain",
-                Map.of("owner", "team")
+                Map.of("owner", "team"),
+                "v1",
+                null,
+                null
         );
     }
 }
+

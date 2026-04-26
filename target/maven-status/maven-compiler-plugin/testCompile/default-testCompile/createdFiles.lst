@@ -1,5 +1,6 @@
 com\example\objectstorage\core\ProviderClientSupportTest.class
 com\example\objectstorage\config\StorageConfigRecordsTest.class
+com\example\objectstorage\core\DefaultObjectStorageServiceTest$TrackingVersionsProviderClient.class
 com\example\objectstorage\core\DefaultObjectStorageServiceTest$TrackingListProviderClient.class
 com\example\objectstorage\provider\azure\AzureBlobProviderClientTest.class
 com\example\objectstorage\core\DefaultObjectStorageServiceTest$FailingDeleteCopyMoveProviderClient.class

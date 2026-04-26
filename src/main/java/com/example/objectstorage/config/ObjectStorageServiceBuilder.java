@@ -7,8 +7,6 @@ import com.example.objectstorage.core.ProviderClient;
 import com.example.objectstorage.provider.azure.AzureBlobProviderClient;
 import com.example.objectstorage.provider.gcp.GcpProviderClient;
 import com.example.objectstorage.provider.s3.S3ProviderClient;
-import java.time.Clock;
-import java.time.ZoneId;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashSet;
@@ -23,7 +21,6 @@ public final class ObjectStorageServiceBuilder {
     public static final int DEFAULT_MAX_CONCURRENT_BATCH_ITEMS = 4;
     public static final int DEFAULT_MAX_BATCH_ITEMS = 500;
     public static final Integer DEFAULT_LIST_MAX_RESULTS = null;
-    public static final ZoneId DEFAULT_TIME_ZONE = ZoneId.of("UTC");
 
     private S3StorageConfig s3StorageConfig;
     private AzureBlobStorageConfig azureBlobStorageConfig;
@@ -36,7 +33,6 @@ public final class ObjectStorageServiceBuilder {
     private Set<String> allowedFileExtensions;
     private Long maxFileSizeBytes;
     private String basePath;
-    private ZoneId timeZone = DEFAULT_TIME_ZONE;
     private StorageProvider provider;
     private String bucket;
 
@@ -146,12 +142,6 @@ public final class ObjectStorageServiceBuilder {
         return this;
     }
 
-    public ObjectStorageServiceBuilder withTimeZone(String timeZone) {
-        Objects.requireNonNull(timeZone, "timeZone must not be null");
-        this.timeZone = ZoneId.of(timeZone.trim());
-        return this;
-    }
-
     public ObjectStorageServiceBuilder withProvider(StorageProvider provider) {
         this.provider = Objects.requireNonNull(provider, "provider must not be null");
         return this;
@@ -196,9 +186,7 @@ public final class ObjectStorageServiceBuilder {
                         defaultListMaxResults,
                         allowedFileExtensions == null ? null : Collections.unmodifiableSet(new LinkedHashSet<>(allowedFileExtensions)),
                         maxFileSizeBytes,
-                        basePath,
-                        timeZone,
-                        Clock.system(timeZone)
+                        basePath
                 )
         );
     }

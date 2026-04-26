@@ -5,6 +5,7 @@ import com.example.objectstorage.api.StorageProvider;
 import com.example.objectstorage.api.request.CopyFileRequest;
 import com.example.objectstorage.api.request.DeleteFileRequest;
 import com.example.objectstorage.api.request.GetFileRequest;
+import com.example.objectstorage.api.request.GetVersionsRequest;
 import com.example.objectstorage.api.request.ListFilesRequest;
 import com.example.objectstorage.api.request.MoveFileRequest;
 import com.example.objectstorage.api.request.UploadFileRequest;
@@ -13,14 +14,10 @@ import com.example.objectstorage.api.response.RetrievedObject;
 import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
 import com.example.objectstorage.config.ObjectStorageServiceBuilder;
-import java.time.Clock;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -43,7 +40,6 @@ import org.slf4j.LoggerFactory;
 public final class DefaultObjectStorageService implements ObjectStorageService {
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultObjectStorageService.class);
     private static final String BATCH_PREFIX = "Batch ";
-    private static final DateTimeFormatter SAVE_PATH_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM/dd/HHmmssSSS");
 
     private final Map<StorageProvider, ProviderClient> providers;
     private final StorageProvider defaultProvider;
@@ -56,8 +52,6 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
     private final Set<String> allowedFileExtensions;
     private final Long maxFileSizeBytes;
     private final String basePath;
-    private final ZoneId timeZone;
-    private final Clock clock;
 
     public DefaultObjectStorageService(
             Map<StorageProvider, ProviderClient> providers,
@@ -103,9 +97,7 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
                         ObjectStorageServiceBuilder.DEFAULT_LIST_MAX_RESULTS,
                         null,
                         null,
-                        null,
-                        ObjectStorageServiceBuilder.DEFAULT_TIME_ZONE,
-                        Clock.system(ObjectStorageServiceBuilder.DEFAULT_TIME_ZONE)
+                        null
                 )
         );
     }
@@ -155,8 +147,6 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
                 : Set.copyOf(settings.allowedFileExtensions());
         this.maxFileSizeBytes = settings.maxFileSizeBytes();
         this.basePath = normalizePath(settings.basePath());
-        this.timeZone = Objects.requireNonNull(settings.timeZone(), "timeZone must not be null");
-        this.clock = Objects.requireNonNull(settings.clock(), "clock must not be null");
     }
 
     @Override
@@ -165,15 +155,14 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
         List<ResolvedSaveRequest> resolvedRequests = resolveSaveRequests(validatedRequests);
         int itemCount = resolvedRequests.size();
         LOGGER.info(
-                "Starting save batch: provider={}, bucket={}, itemCount={}, batchSize={}, maxConcurrentBatchItems={}, maxBatchItems={}, basePath={}, timeZone={}",
+                "Starting save batch: provider={}, bucket={}, itemCount={}, batchSize={}, maxConcurrentBatchItems={}, maxBatchItems={}, basePath={}",
                 defaultProvider,
                 defaultBucket,
                 itemCount,
                 batchSize,
                 maxConcurrentBatchItems,
                 maxBatchItems,
-                basePath,
-                timeZone
+                basePath
         );
         List<StoredObject> savedObjects = processSaveFilesTransactionally(resolvedRequests);
         int savedItemCount = savedObjects.size();
@@ -189,9 +178,10 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
     @Override
     public List<RetrievedObject> getFiles(List<GetFileRequest> requests) {
         List<GetFileRequest> validatedRequests = validateBatchRequests(requests, "get");
-        int itemCount = validatedRequests.size();
+        List<GetFileRequest> expandedRequests = expandGetRequests(validatedRequests);
+        int itemCount = expandedRequests.size();
         LOGGER.info("Starting get batch: itemCount={}", itemCount);
-        List<RetrievedObject> objects = processInBatches(validatedRequests, this::getOne, "get", false);
+        List<RetrievedObject> objects = processInBatches(expandedRequests, this::getOne, "get", false);
         int objectCount = objects.size();
         LOGGER.info("Completed get batch: itemCount={}", objectCount);
         return objects;
@@ -200,9 +190,10 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
     @Override
     public List<DeletedObject> deleteFiles(List<DeleteFileRequest> requests) {
         List<DeleteFileRequest> validatedRequests = validateBatchRequests(requests, "delete");
-        int itemCount = validatedRequests.size();
+        List<DeleteFileRequest> expandedRequests = expandDeleteRequests(validatedRequests);
+        int itemCount = expandedRequests.size();
         LOGGER.info("Starting delete batch: itemCount={}", itemCount);
-        List<DeletedObject> deletedObjects = processInBatches(validatedRequests, this::deleteOne, "delete", false);
+        List<DeletedObject> deletedObjects = processInBatches(expandedRequests, this::deleteOne, "delete", false);
         int deletedItemCount = deletedObjects.size();
         LOGGER.info("Completed delete batch: itemCount={}", deletedItemCount);
         return deletedObjects;
@@ -211,9 +202,10 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
     @Override
     public List<StoredObject> copyFiles(List<CopyFileRequest> requests) {
         List<CopyFileRequest> validatedRequests = validateBatchRequests(requests, "copy");
-        int itemCount = validatedRequests.size();
+        List<CopyFileRequest> expandedRequests = expandCopyRequests(validatedRequests);
+        int itemCount = expandedRequests.size();
         LOGGER.info("Starting copy batch: itemCount={}", itemCount);
-        List<StoredObject> copiedObjects = processInBatches(validatedRequests, this::copyOne, "copy", false);
+        List<StoredObject> copiedObjects = processInBatches(expandedRequests, this::copyOne, "copy", false);
         int copiedItemCount = copiedObjects.size();
         LOGGER.info("Completed copy batch: itemCount={}", copiedItemCount);
         return copiedObjects;
@@ -222,9 +214,10 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
     @Override
     public List<StoredObject> moveFiles(List<MoveFileRequest> requests) {
         List<MoveFileRequest> validatedRequests = validateBatchRequests(requests, "move");
-        int itemCount = validatedRequests.size();
+        List<MoveFileRequest> expandedRequests = expandMoveRequests(validatedRequests);
+        int itemCount = expandedRequests.size();
         LOGGER.info("Starting move batch: itemCount={}", itemCount);
-        List<StoredObject> movedObjects = processInBatches(validatedRequests, this::moveOne, "move", false);
+        List<StoredObject> movedObjects = processInBatches(expandedRequests, this::moveOne, "move", false);
         int movedItemCount = movedObjects.size();
         LOGGER.info("Completed move batch: itemCount={}", movedItemCount);
         return movedObjects;
@@ -251,7 +244,7 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
     private DeletedObject deleteOne(DeleteFileRequest request) {
         ResolvedTarget target = resolveTarget(request.provider(), request.bucket());
         resolveClient(target.provider()).deleteFile(target.bucket(), request);
-        return new DeletedObject(target.provider(), target.bucket(), request.key());
+        return new DeletedObject(target.provider(), target.bucket(), request.filePath(), request.versionId());
     }
 
     private StoredObject copyOne(CopyFileRequest request) {
@@ -277,7 +270,7 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
         StoredObject storedObject;
         try (RetrievedObject sourceObject = resolveClient(sourceTarget.provider()).getFile(
                 sourceTarget.bucket(),
-                new GetFileRequest(request.sourceKey(), sourceTarget.provider(), sourceTarget.bucket())
+                new GetFileRequest(request.sourceKey(), request.sourceVersionId(), sourceTarget.provider(), sourceTarget.bucket())
         )) {
             storedObject = resolveClient(targetTarget.provider()).saveFile(
                     targetTarget.bucket(),
@@ -287,6 +280,7 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
                             sourceObject.size(),
                             sourceObject.contentType(),
                             sourceObject.metadata(),
+                            null,
                             targetTarget.provider(),
                             targetTarget.bucket()
                     )
@@ -296,9 +290,9 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
                 storedObject.provider(),
                 storedObject.bucket(),
                 request.sourceKey(),
-                storedObject.key(),
+                storedObject.filePath(),
                 extractFilename(request.sourceKey()),
-                extractFilename(storedObject.key()),
+                extractFilename(storedObject.filePath()),
                 storedObject.eTag(),
                 storedObject.versionId()
         );
@@ -308,7 +302,7 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
             String sourceKey = request.sourceKey();
             StorageProvider destinationProvider = targetTarget.provider();
             String destinationBucket = targetTarget.bucket();
-            String destinationKey = result.key();
+            String destinationKey = result.filePath();
             LOGGER.debug(
                     "Copy item completed: sourceProvider={}, sourceBucket={}, sourceKey={}, targetProvider={}, targetBucket={}, targetKey={}",
                     sourceProvider,
@@ -327,6 +321,7 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
         ResolvedTarget targetTarget = resolveTarget(request.targetProvider(), request.targetBucket());
         StoredObject copiedObject = copyOne(new CopyFileRequest(
                 request.sourceKey(),
+                request.sourceVersionId(),
                 request.targetKey(),
                 request.sourceProvider(),
                 request.sourceBucket(),
@@ -336,7 +331,7 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
         try {
             resolveClient(sourceTarget.provider()).deleteFile(
                     sourceTarget.bucket(),
-                    new DeleteFileRequest(request.sourceKey(), sourceTarget.provider(), sourceTarget.bucket())
+                    new DeleteFileRequest(request.sourceKey(), request.sourceVersionId(), sourceTarget.provider(), sourceTarget.bucket())
             );
         } catch (RuntimeException sourceDeleteFailure) {
             LOGGER.warn(
@@ -346,31 +341,31 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
                     request.sourceKey(),
                     targetTarget.provider(),
                     targetTarget.bucket(),
-                    copiedObject.key(),
+                    copiedObject.filePath(),
                     sourceDeleteFailure
             );
             try {
                 resolveClient(copiedObject.provider()).deleteFile(
                         copiedObject.bucket(),
-                        new DeleteFileRequest(copiedObject.key(), copiedObject.provider(), copiedObject.bucket())
+                        new DeleteFileRequest(copiedObject.filePath(), copiedObject.versionId(), copiedObject.provider(), copiedObject.bucket())
                 );
                 LOGGER.info(
                         "Move compensation delete completed: targetProvider={}, targetBucket={}, targetKey={}",
                         copiedObject.provider(),
                         copiedObject.bucket(),
-                        copiedObject.key()
+                        copiedObject.filePath()
                 );
             } catch (RuntimeException compensationFailure) {
                 LOGGER.warn(
                         "Move compensation delete failed: targetProvider={}, targetBucket={}, targetKey={}",
                         copiedObject.provider(),
                         copiedObject.bucket(),
-                        copiedObject.key(),
+                        copiedObject.filePath(),
                         compensationFailure
                 );
                 sourceDeleteFailure.addSuppressed(new ObjectStorageException(
                         "Move compensation delete failed for "
-                                + copiedObject.provider() + ":" + copiedObject.bucket() + "/" + copiedObject.key(),
+                                + copiedObject.provider() + ":" + copiedObject.bucket() + "/" + copiedObject.filePath(),
                         compensationFailure
                 ));
             }
@@ -461,7 +456,7 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
                 state = state.onItemCompleted();
                 results.set(result.index(), result.value());
                 savedObjects.add(result.value());
-                String storedKey = result.value().key();
+                String storedKey = result.value().filePath();
                 LOGGER.debug(
                         "Save item completed: provider={}, bucket={}, index={}, storedKey={}, inFlightRemaining={}",
                         defaultProvider,
@@ -475,7 +470,7 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
                     int nextIndex = state.nextIndex();
                     ResolvedSaveRequest nextRequest = requests.get(nextIndex);
                     submitSaveItem(completionService, nextIndex, nextRequest);
-                    String nextKey = nextRequest.storedRequest().key();
+                    String nextKey = nextRequest.storedRequest().filePath();
                     LOGGER.debug(
                             "Save item submitted after completion: index={}, key={}",
                             nextIndex,
@@ -539,8 +534,8 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
                     request.target().provider(),
                     request.target().bucket(),
                     index,
-                    request.originalRequest().key(),
-                    request.storedRequest().key()
+                    request.originalRequest().filePath(),
+                    request.storedRequest().filePath()
             );
             try {
                 StoredObject storedObject = saveOne(request.target(), request.storedRequest());
@@ -549,7 +544,7 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
                         request.target().provider(),
                         request.target().bucket(),
                         index,
-                        storedObject.key()
+                        storedObject.filePath()
                 );
                 return new IndexedResult<>(index, enrichStoredObject(request, storedObject));
             } catch (RuntimeException ex) {
@@ -562,10 +557,10 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
         return new StoredObject(
                 storedObject.provider(),
                 storedObject.bucket(),
-                request.originalRequest().key(),
-                storedObject.key(),
+                request.originalRequest().filePath(),
+                storedObject.filePath(),
                 extractFilename(request.normalizedOriginalKey()),
-                extractFilename(storedObject.key()),
+                extractFilename(storedObject.filePath()),
                 storedObject.eTag(),
                 storedObject.versionId()
         );
@@ -593,7 +588,7 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
             StoredObject savedObject = savedObjects.get(index);
             StorageProvider provider = savedObject.provider();
             String bucket = savedObject.bucket();
-            String key = savedObject.key();
+            String key = savedObject.filePath();
             try {
                 LOGGER.info(
                         "Rolling back saved object: provider={}, bucket={}, key={}",
@@ -601,7 +596,7 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
                         bucket,
                         key
                 );
-                resolveClient(provider).deleteFile(bucket, new DeleteFileRequest(key));
+                resolveClient(provider).deleteFile(bucket, new DeleteFileRequest(key, savedObject.versionId(), provider, bucket));
             } catch (RuntimeException rollbackFailure) {
                 LOGGER.warn(
                         "Rollback delete failed: provider={}, bucket={}, key={}",
@@ -651,6 +646,36 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
                 objectCount
         );
         return objects;
+    }
+
+    @Override
+    public List<StorageObjectInfo> getVersions(GetVersionsRequest request) {
+        Objects.requireNonNull(request, "request must not be null");
+        ResolvedTarget target = resolveTarget(request.provider(), request.bucket());
+        StorageProvider targetProvider = target.provider();
+        String targetBucket = target.bucket();
+        String filePath = request.filePath();
+        LOGGER.info(
+                "Listing versions: provider={}, bucket={}, filePath={}",
+                targetProvider,
+                targetBucket,
+                filePath
+        );
+        List<StorageObjectInfo> listed = resolveClient(targetProvider).listFiles(
+                targetBucket,
+                new ListFilesRequest(filePath, null, targetProvider, targetBucket)
+        );
+        List<StorageObjectInfo> versions = listed.stream()
+                .filter(item -> filePath.equals(item.filePath()))
+                .toList();
+        LOGGER.info(
+                "Completed version listing: provider={}, bucket={}, filePath={}, itemCount={}",
+                targetProvider,
+                targetBucket,
+                filePath,
+                versions.size()
+        );
+        return versions;
     }
 
     private ListFilesRequest resolveListRequest(ListFilesRequest request) {
@@ -847,29 +872,121 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
     private String describeRequest(Object request) {
         if (request instanceof UploadFileRequest uploadFileRequest) {
             ResolvedTarget target = resolveTarget(uploadFileRequest.provider(), uploadFileRequest.bucket());
-            return target.provider() + ":" + target.bucket() + "/" + uploadFileRequest.key();
+            return target.provider() + ":" + target.bucket() + "/" + uploadFileRequest.filePath()
+                    + (uploadFileRequest.versionId() == null ? "" : "@" + uploadFileRequest.versionId());
         }
         if (request instanceof GetFileRequest getFileRequest) {
             ResolvedTarget target = resolveTarget(getFileRequest.provider(), getFileRequest.bucket());
-            return target.provider() + ":" + target.bucket() + "/" + getFileRequest.key();
+            return target.provider() + ":" + target.bucket() + "/" + getFileRequest.filePath()
+                    + (getFileRequest.versionId() == null ? "" : "@" + getFileRequest.versionId());
         }
         if (request instanceof DeleteFileRequest deleteFileRequest) {
             ResolvedTarget target = resolveTarget(deleteFileRequest.provider(), deleteFileRequest.bucket());
-            return target.provider() + ":" + target.bucket() + "/" + deleteFileRequest.key();
+            return target.provider() + ":" + target.bucket() + "/" + deleteFileRequest.filePath()
+                    + (deleteFileRequest.versionId() == null ? "" : "@" + deleteFileRequest.versionId());
         }
         if (request instanceof CopyFileRequest copyFileRequest) {
             ResolvedTarget sourceTarget = resolveTarget(copyFileRequest.sourceProvider(), copyFileRequest.sourceBucket());
             ResolvedTarget targetTarget = resolveTarget(copyFileRequest.targetProvider(), copyFileRequest.targetBucket());
             return sourceTarget.provider() + ":" + sourceTarget.bucket() + "/" + copyFileRequest.sourceKey()
+                    + (copyFileRequest.sourceVersionId() == null ? "" : "@" + copyFileRequest.sourceVersionId())
                     + " -> " + targetTarget.provider() + ":" + targetTarget.bucket() + "/" + copyFileRequest.targetKey();
         }
         if (request instanceof MoveFileRequest moveFileRequest) {
             ResolvedTarget sourceTarget = resolveTarget(moveFileRequest.sourceProvider(), moveFileRequest.sourceBucket());
             ResolvedTarget targetTarget = resolveTarget(moveFileRequest.targetProvider(), moveFileRequest.targetBucket());
             return sourceTarget.provider() + ":" + sourceTarget.bucket() + "/" + moveFileRequest.sourceKey()
+                    + (moveFileRequest.sourceVersionId() == null ? "" : "@" + moveFileRequest.sourceVersionId())
                     + " -> " + targetTarget.provider() + ":" + targetTarget.bucket() + "/" + moveFileRequest.targetKey();
         }
         return String.valueOf(request);
+    }
+
+    private List<GetFileRequest> expandGetRequests(List<GetFileRequest> requests) {
+        List<GetFileRequest> expanded = new ArrayList<>();
+        for (GetFileRequest request : requests) {
+            ResolvedTarget target = resolveTarget(request.provider(), request.bucket());
+            for (String versionId : resolveVersionIds(target, request.filePath(), request.versionId())) {
+                expanded.add(new GetFileRequest(request.filePath(), versionId, target.provider(), target.bucket()));
+            }
+        }
+        return List.copyOf(expanded);
+    }
+
+    private List<DeleteFileRequest> expandDeleteRequests(List<DeleteFileRequest> requests) {
+        List<DeleteFileRequest> expanded = new ArrayList<>();
+        for (DeleteFileRequest request : requests) {
+            ResolvedTarget target = resolveTarget(request.provider(), request.bucket());
+            for (String versionId : resolveVersionIds(target, request.filePath(), request.versionId())) {
+                expanded.add(new DeleteFileRequest(request.filePath(), versionId, target.provider(), target.bucket()));
+            }
+        }
+        return List.copyOf(expanded);
+    }
+
+    private List<CopyFileRequest> expandCopyRequests(List<CopyFileRequest> requests) {
+        List<CopyFileRequest> expanded = new ArrayList<>();
+        for (CopyFileRequest request : requests) {
+            ResolvedTarget sourceTarget = resolveTarget(request.sourceProvider(), request.sourceBucket());
+            for (String versionId : resolveVersionIds(sourceTarget, request.sourceKey(), request.sourceVersionId())) {
+                expanded.add(new CopyFileRequest(
+                        request.sourceKey(),
+                        versionId,
+                        request.targetKey(),
+                        sourceTarget.provider(),
+                        sourceTarget.bucket(),
+                        request.targetProvider(),
+                        request.targetBucket()
+                ));
+            }
+        }
+        return List.copyOf(expanded);
+    }
+
+    private List<MoveFileRequest> expandMoveRequests(List<MoveFileRequest> requests) {
+        List<MoveFileRequest> expanded = new ArrayList<>();
+        for (MoveFileRequest request : requests) {
+            ResolvedTarget sourceTarget = resolveTarget(request.sourceProvider(), request.sourceBucket());
+            for (String versionId : resolveVersionIds(sourceTarget, request.sourceKey(), request.sourceVersionId())) {
+                expanded.add(new MoveFileRequest(
+                        request.sourceKey(),
+                        versionId,
+                        request.targetKey(),
+                        sourceTarget.provider(),
+                        sourceTarget.bucket(),
+                        request.targetProvider(),
+                        request.targetBucket()
+                ));
+            }
+        }
+        return List.copyOf(expanded);
+    }
+
+    private List<String> resolveVersionIds(ResolvedTarget target, String filePath, String requestedVersionId) {
+        if (requestedVersionId != null) {
+            return List.of(requestedVersionId);
+        }
+        List<StorageObjectInfo> listed = resolveClient(target.provider()).listFiles(
+                target.bucket(),
+                new ListFilesRequest(filePath, null, target.provider(), target.bucket())
+        );
+        Set<String> versionIds = new LinkedHashSet<>();
+        boolean exactPathSeen = false;
+        for (StorageObjectInfo info : listed) {
+            if (filePath.equals(info.filePath())) {
+                exactPathSeen = true;
+                if (info.versionId() != null) {
+                    versionIds.add(info.versionId());
+                }
+            }
+        }
+        if (!versionIds.isEmpty()) {
+            return List.copyOf(versionIds);
+        }
+        if (exactPathSeen) {
+            return Collections.singletonList(null);
+        }
+        return Collections.singletonList(null);
     }
 
     private List<ResolvedSaveRequest> resolveSaveRequests(List<UploadFileRequest> requests) {
@@ -877,38 +994,36 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
             return List.of();
         }
 
-        String savePrefix = buildSavePrefix();
-        Set<String> usedKeys = new HashSet<>();
         List<ResolvedSaveRequest> resolvedRequests = new ArrayList<>(requests.size());
 
         for (int index = 0; index < requests.size(); index++) {
             UploadFileRequest originalRequest = requests.get(index);
             ResolvedTarget target = resolveTarget(originalRequest.provider(), originalRequest.bucket());
             validateSaveRequest(originalRequest);
-            String normalizedOriginalKey = normalizeUserKey(originalRequest.key());
-            String candidateKey = appendPath(savePrefix, normalizedOriginalKey);
-            String storedKey = ensureUniqueKey(candidateKey, usedKeys);
+            String normalizedOriginalFilePath = normalizeUserFilePath(originalRequest.filePath());
+            String storedFilePath = appendPath(basePath, normalizedOriginalFilePath);
 
             UploadFileRequest storedRequest = new UploadFileRequest(
-                    storedKey,
+                    storedFilePath,
                     originalRequest.content(),
                     originalRequest.contentLength(),
                     originalRequest.contentType(),
                     originalRequest.metadata(),
+                    originalRequest.versionId(),
                     target.provider(),
                     target.bucket()
             );
-            resolvedRequests.add(new ResolvedSaveRequest(originalRequest, storedRequest, normalizedOriginalKey, target));
-            String originalKey = originalRequest.key();
+            resolvedRequests.add(new ResolvedSaveRequest(originalRequest, storedRequest, normalizedOriginalFilePath, target));
+            String originalFilePath = originalRequest.filePath();
             if (LOGGER.isDebugEnabled()) {
                 StorageProvider resolvedProvider = target.provider();
                 String resolvedBucket = target.bucket();
                 LOGGER.debug(
-                        "Resolved save key: provider={}, bucket={}, originalKey={}, storedKey={}",
+                        "Resolved save path: provider={}, bucket={}, originalFilePath={}, storedFilePath={}",
                         resolvedProvider,
                         resolvedBucket,
-                        originalKey,
-                        storedKey
+                        originalFilePath,
+                        storedFilePath
                 );
             }
         }
@@ -917,13 +1032,13 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
     }
 
     private void validateSaveRequest(UploadFileRequest request) {
-        String normalizedOriginalKey = normalizeUserKey(request.key());
-        validateSaveConstraints(normalizedOriginalKey, request.contentLength());
+        String normalizedOriginalFilePath = normalizeUserFilePath(request.filePath());
+        validateSaveConstraints(normalizedOriginalFilePath, request.contentLength());
     }
 
-    private void validateSaveConstraints(String normalizedOriginalKey, long contentLength) {
+    private void validateSaveConstraints(String normalizedOriginalFilePath, long contentLength) {
         if (allowedFileExtensions != null) {
-            String extension = extractExtension(normalizedOriginalKey);
+            String extension = extractExtension(normalizedOriginalFilePath);
             if (!allowedFileExtensions.contains(extension)) {
                 throw new IllegalArgumentException(
                         "file extension '" + extension + "' is not allowed; allowedFileExtensions=" + allowedFileExtensions
@@ -941,39 +1056,18 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
         String filename = extractFilename(normalizedKey);
         int dotIndex = filename.lastIndexOf('.');
         if (dotIndex <= 0 || dotIndex == filename.length() - 1) {
-            throw new IllegalArgumentException("file extension is required for key: " + normalizedKey);
+            throw new IllegalArgumentException("file extension is required for filePath: " + normalizedKey);
         }
         return filename.substring(dotIndex + 1).toLowerCase(java.util.Locale.ROOT);
     }
 
-    private String buildSavePrefix() {
-        String timestampPath = SAVE_PATH_FORMATTER.format(ZonedDateTime.now(clock.withZone(timeZone)));
-        return appendPath(basePath, timestampPath);
-    }
-
-    private String ensureUniqueKey(String candidateKey, Set<String> usedKeys) {
-        if (usedKeys.add(candidateKey)) {
-            return candidateKey;
+    private String normalizeUserFilePath(String filePath) {
+        String normalizedFilePath = normalizePath(filePath);
+        if (normalizedFilePath == null) {
+            throw new IllegalArgumentException("filePath must not be blank");
         }
-
-        String parentPath = parentPath(candidateKey);
-        String filename = extractFilename(candidateKey);
-        int counter = 1;
-        String renamedKey;
-        do {
-            renamedKey = appendPath(parentPath, counter + "_" + filename);
-            counter++;
-        } while (!usedKeys.add(renamedKey));
-        return renamedKey;
-    }
-
-    private String normalizeUserKey(String key) {
-        String normalizedKey = normalizePath(key);
-        if (normalizedKey == null) {
-            throw new IllegalArgumentException("key must not be blank");
-        }
-        extractFilename(normalizedKey);
-        return normalizedKey;
+        extractFilename(normalizedFilePath);
+        return normalizedFilePath;
     }
 
     private String normalizePath(String path) {
@@ -1007,16 +1101,11 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
         return normalizedLeft + "/" + normalizedRight;
     }
 
-    private String parentPath(String key) {
-        int lastSlash = key.lastIndexOf('/');
-        return lastSlash >= 0 ? key.substring(0, lastSlash) : null;
-    }
-
-    private String extractFilename(String key) {
-        int lastSlash = key.lastIndexOf('/');
-        String filename = lastSlash >= 0 ? key.substring(lastSlash + 1) : key;
+    private String extractFilename(String filePath) {
+        int lastSlash = filePath.lastIndexOf('/');
+        String filename = lastSlash >= 0 ? filePath.substring(lastSlash + 1) : filePath;
         if (filename.isBlank()) {
-            throw new IllegalArgumentException("key must reference a file name");
+            throw new IllegalArgumentException("filePath must reference a file name");
         }
         return filename;
     }
@@ -1083,12 +1172,9 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
             Integer defaultListMaxResults,
             Set<String> allowedFileExtensions,
             Long maxFileSizeBytes,
-            String basePath,
-            ZoneId timeZone,
-            Clock clock
+            String basePath
     ) {
         static ServiceSettings defaultSettings() {
-            ZoneId zoneId = ObjectStorageServiceBuilder.DEFAULT_TIME_ZONE;
             return new ServiceSettings(
                     ObjectStorageServiceBuilder.DEFAULT_BATCH_SIZE,
                     ObjectStorageServiceBuilder.DEFAULT_MAX_CONCURRENT_BATCH_ITEMS,
@@ -1096,9 +1182,7 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
                     ObjectStorageServiceBuilder.DEFAULT_LIST_MAX_RESULTS,
                     null,
                     null,
-                    null,
-                    zoneId,
-                    Clock.system(zoneId)
+                    null
             );
         }
     }
@@ -1128,3 +1212,4 @@ public final class DefaultObjectStorageService implements ObjectStorageService {
     private record ResolvedTarget(StorageProvider provider, String bucket) {
     }
 }
+

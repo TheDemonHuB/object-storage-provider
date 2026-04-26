@@ -15,22 +15,27 @@ class UploadFileRequestTest {
                 new ByteArrayInputStream(new byte[]{1, 2, 3}),
                 3L,
                 "text/plain",
-                Map.of("owner", "team-a")
+                Map.of("owner", "team-a"),
+                "v1",
+                null,
+                null
         );
 
-        assertEquals("docs/sample.txt", request.key());
+        assertEquals("docs/sample.txt", request.filePath());
         assertEquals(3L, request.contentLength());
         assertEquals("text/plain", request.contentType());
         assertEquals("team-a", request.metadata().get("owner"));
+        assertEquals("v1", request.versionId());
     }
 
     @Test
     void shouldRejectInvalidStreamUploadRequest() {
         assertThrows(IllegalArgumentException.class, () ->
-                new UploadFileRequest(" ", new ByteArrayInputStream(new byte[]{1}), 1L, "text/plain", Map.of()));
+                new UploadFileRequest(" ", new ByteArrayInputStream(new byte[]{1}), 1L, "text/plain", Map.of(), null, null, null));
         assertThrows(NullPointerException.class, () ->
-                new UploadFileRequest("key", null, 1L, "text/plain", Map.of()));
+                new UploadFileRequest("key", null, 1L, "text/plain", Map.of(), null, null, null));
         assertThrows(IllegalArgumentException.class, () ->
-                new UploadFileRequest("key", new ByteArrayInputStream(new byte[]{1}), 0L, "text/plain", Map.of()));
+                new UploadFileRequest("key", new ByteArrayInputStream(new byte[]{1}), 0L, "text/plain", Map.of(), null, null, null));
     }
 }
+

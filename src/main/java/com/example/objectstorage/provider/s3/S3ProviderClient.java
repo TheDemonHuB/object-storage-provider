@@ -30,11 +30,11 @@ import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
+import software.amazon.awssdk.services.s3.model.ListObjectVersionsRequest;
+import software.amazon.awssdk.services.s3.model.ListObjectVersionsResponse;
+import software.amazon.awssdk.services.s3.model.ObjectVersion;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
-import software.amazon.awssdk.services.s3.model.S3Object;
 
 public final class S3ProviderClient implements ProviderClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(S3ProviderClient.class);
@@ -77,8 +77,9 @@ public final class S3ProviderClient implements ProviderClient {
     public StoredObject saveFile(String bucket, UploadFileRequest request) {
         String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
-        String key = request.key();
+        String key = request.filePath();
         return operations.executeKeyOperation(LOGGER, "upload stream", targetBucket, key, () -> {
+            operations.validateExpectedVersion(LOGGER, targetBucket, key, request.versionId(), () -> resolveCurrentVersionId(targetBucket, key));
             PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                     .bucket(targetBucket)
                     .key(key)
@@ -109,13 +110,10 @@ public final class S3ProviderClient implements ProviderClient {
     public RetrievedObject getFile(String bucket, GetFileRequest request) {
         String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
-        String key = request.key();
+        String key = request.filePath();
         return operations.executeKeyOperation(LOGGER, "download stream", targetBucket, key, () -> {
             ResponseInputStream<GetObjectResponse> stream = s3Client.getObject(
-                    GetObjectRequest.builder()
-                            .bucket(targetBucket)
-                            .key(key)
-                            .build()
+                    buildGetObjectRequest(targetBucket, key, request.versionId())
             );
             GetObjectResponse response = stream.response();
             Long contentLength = response.contentLength();
@@ -124,6 +122,7 @@ public final class S3ProviderClient implements ProviderClient {
                     provider(),
                     targetBucket,
                     key,
+                    response.versionId(),
                     stream,
                     response.contentType(),
                     response.metadata(),
@@ -138,13 +137,10 @@ public final class S3ProviderClient implements ProviderClient {
     public void deleteFile(String bucket, DeleteFileRequest request) {
         String targetBucket = com.example.objectstorage.core.ValidationUtils.requireNonBlank(bucket, BUCKET_FIELD);
         Objects.requireNonNull(request, ProviderClientSupport.REQUEST_MUST_NOT_BE_NULL);
-        String key = request.key();
+        String key = request.filePath();
         operations.executeVoidKeyOperation(LOGGER, "delete", targetBucket, key, () -> {
             s3Client.deleteObject(
-                    DeleteObjectRequest.builder()
-                            .bucket(targetBucket)
-                            .key(key)
-                            .build()
+                    buildDeleteObjectRequest(targetBucket, key, request.versionId())
             );
             LOGGER.info("S3 delete completed: bucket={}, key={}", targetBucket, key);
         });
@@ -158,34 +154,38 @@ public final class S3ProviderClient implements ProviderClient {
         Integer maxResults = request.maxResults();
         return operations.executeListOperation(LOGGER, targetBucket, prefix, maxResults, () -> {
             List<StorageObjectInfo> objects = new ArrayList<>();
-            String continuationToken = null;
+            String keyMarker = null;
+            String versionIdMarker = null;
             boolean truncated;
             do {
-                ListObjectsV2Response response = s3Client.listObjectsV2(
-                        buildListRequest(targetBucket, prefix, maxResults, objects.size(), continuationToken)
+                ListObjectVersionsResponse response = s3Client.listObjectVersions(
+                        buildListVersionsRequest(targetBucket, prefix, maxResults, objects.size(), keyMarker, versionIdMarker)
                 );
-                boolean maxReached = appendPageObjects(response.contents(), objects, maxResults);
+                boolean maxReached = appendPageVersions(response.versions(), objects, maxResults);
                 if (maxReached) {
                     return completeList(targetBucket, objects);
                 }
                 truncated = Boolean.TRUE.equals(response.isTruncated());
-                continuationToken = response.nextContinuationToken();
+                keyMarker = response.nextKeyMarker();
+                versionIdMarker = response.nextVersionIdMarker();
             } while (truncated);
 
             return completeList(targetBucket, objects);
         });
     }
 
-    private ListObjectsV2Request buildListRequest(
+    private ListObjectVersionsRequest buildListVersionsRequest(
             String bucket,
             String prefix,
             Integer maxResults,
             int collectedCount,
-            String continuationToken
+            String keyMarker,
+            String versionIdMarker
     ) {
-        ListObjectsV2Request.Builder listRequest = ListObjectsV2Request.builder()
+        ListObjectVersionsRequest.Builder listRequest = ListObjectVersionsRequest.builder()
                 .bucket(bucket)
-                .continuationToken(continuationToken);
+                .keyMarker(keyMarker)
+                .versionIdMarker(versionIdMarker);
         if (prefix != null) {
             listRequest.prefix(prefix);
         }
@@ -197,14 +197,15 @@ public final class S3ProviderClient implements ProviderClient {
         return listRequest.build();
     }
 
-    private boolean appendPageObjects(List<S3Object> sourceObjects, List<StorageObjectInfo> collected, Integer maxResults) {
-        for (S3Object object : sourceObjects) {
-            String key = object.key();
+    private boolean appendPageVersions(List<ObjectVersion> sourceVersions, List<StorageObjectInfo> collected, Integer maxResults) {
+        for (ObjectVersion version : sourceVersions) {
+            String key = version.key();
             if (!isDirectoryMarker(key)) {
                 collected.add(new StorageObjectInfo(
                         key,
-                        object.size(),
-                        object.lastModified()
+                        version.size(),
+                        version.lastModified(),
+                        version.versionId()
                 ));
                 if (maxResults != null && collected.size() >= maxResults) {
                     return true;
@@ -229,4 +230,52 @@ public final class S3ProviderClient implements ProviderClient {
     private boolean isDirectoryMarker(String key) {
         return key != null && key.endsWith("/");
     }
+
+    private GetObjectRequest buildGetObjectRequest(String bucket, String key, String versionId) {
+        GetObjectRequest.Builder builder = GetObjectRequest.builder()
+                .bucket(bucket)
+                .key(key);
+        if (versionId != null) {
+            builder.versionId(versionId);
+        }
+        return builder.build();
+    }
+
+    private DeleteObjectRequest buildDeleteObjectRequest(String bucket, String key, String versionId) {
+        DeleteObjectRequest.Builder builder = DeleteObjectRequest.builder()
+                .bucket(bucket)
+                .key(key);
+        if (versionId != null) {
+            builder.versionId(versionId);
+        }
+        return builder.build();
+    }
+
+    private String resolveCurrentVersionId(String bucket, String key) {
+        String keyMarker = null;
+        String versionIdMarker = null;
+        boolean truncated;
+        do {
+            ListObjectVersionsResponse response = s3Client.listObjectVersions(
+                    ListObjectVersionsRequest.builder()
+                            .bucket(bucket)
+                            .prefix(key)
+                            .keyMarker(keyMarker)
+                            .versionIdMarker(versionIdMarker)
+                            .maxKeys(1_000)
+                            .build()
+            );
+            for (ObjectVersion version : response.versions()) {
+                if (key.equals(version.key())) {
+                    return version.versionId();
+                }
+            }
+            truncated = Boolean.TRUE.equals(response.isTruncated());
+            keyMarker = response.nextKeyMarker();
+            versionIdMarker = response.nextVersionIdMarker();
+        } while (truncated);
+        return null;
+    }
 }
+
+

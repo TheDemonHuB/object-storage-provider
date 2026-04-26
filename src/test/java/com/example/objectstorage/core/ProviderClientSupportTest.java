@@ -90,4 +90,46 @@ class ProviderClientSupportTest {
 
         assertEquals("Azure list failed for container: docs", thrown.getMessage());
     }
+
+    @Test
+    void shouldPassVersionPreconditionWhenExpectedMatchesCurrent() {
+        ProviderClientSupport support = new ProviderClientSupport("S3", "bucket");
+
+        support.validateExpectedVersion(
+                LOGGER,
+                "docs",
+                "a.txt",
+                "v1",
+                () -> "v1"
+        );
+    }
+
+    @Test
+    void shouldFailVersionPreconditionWhenExpectedDoesNotMatchCurrent() {
+        ProviderClientSupport support = new ProviderClientSupport("S3", "bucket");
+
+        ObjectStorageException thrown = assertThrows(
+                ObjectStorageException.class,
+                () -> support.validateExpectedVersion(LOGGER, "docs", "a.txt", "v1", () -> "v2")
+        );
+
+        assertEquals(
+                "S3 save version mismatch for bucket/key docs/a.txt: expectedVersionId=v1, currentVersionId=v2",
+                thrown.getMessage()
+        );
+    }
+
+    @Test
+    void shouldWrapGenericExceptionFromVersionSupplier() {
+        ProviderClientSupport support = new ProviderClientSupport("S3", "bucket");
+
+        ObjectStorageException thrown = assertThrows(
+                ObjectStorageException.class,
+                () -> support.validateExpectedVersion(LOGGER, "docs", "a.txt", "v1", () -> {
+                    throw new IllegalStateException("boom");
+                })
+        );
+
+        assertEquals("S3 version precondition check failed for bucket/key: docs/a.txt", thrown.getMessage());
+    }
 }

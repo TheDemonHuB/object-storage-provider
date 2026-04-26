@@ -74,5 +74,44 @@ public final class ProviderClientSupport {
         }
     }
 
+    public void validateExpectedVersion(
+            Logger logger,
+            String bucket,
+            String key,
+            String expectedVersionId,
+            Supplier&lt;String&gt; currentVersionSupplier
+    ) {
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">        if (expectedVersionId == null) {</span>
+<span class="nc" id="L85">            return;</span>
+        }
+        String currentVersionId;
+        try {
+<span class="fc" id="L89">            currentVersionId = currentVersionSupplier.get();</span>
+<span class="nc" id="L90">        } catch (ObjectStorageException ex) {</span>
+<span class="nc" id="L91">            throw ex;</span>
+<span class="fc" id="L92">        } catch (RuntimeException ex) {</span>
+<span class="fc" id="L93">            throw new ObjectStorageException(</span>
+                    providerName + &quot; version precondition check failed for &quot; + bucketLabel + &quot;/key: &quot; + bucket + &quot;/&quot; + key,
+                    ex
+            );
+<span class="fc" id="L97">        }</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        if (!expectedVersionId.equals(currentVersionId)) {</span>
+<span class="fc" id="L99">            throw new ObjectStorageException(</span>
+                    providerName + &quot; save version mismatch for &quot; + bucketLabel + &quot;/key &quot;
+                            + bucket + &quot;/&quot; + key
+                            + &quot;: expectedVersionId=&quot; + expectedVersionId
+                            + &quot;, currentVersionId=&quot; + currentVersionId
+            );
+        }
+<span class="fc" id="L106">        logger.debug(</span>
+                &quot;{} save version precondition passed: {}={}, key={}, versionId={}&quot;,
+                providerName,
+                bucketLabel,
+                bucket,
+                key,
+                expectedVersionId
+        );
+<span class="fc" id="L114">    }</span>
+
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

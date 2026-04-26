@@ -26,7 +26,7 @@ class StubProviderClient implements ProviderClient {
 
     @Override
     public StoredObject saveFile(String bucket, UploadFileRequest request) {
-        return new StoredObject(provider, bucket, request.key(), "etag", null);
+        return new StoredObject(provider, bucket, request.filePath(), "etag", null);
     }
 
     @Override
@@ -34,7 +34,8 @@ class StubProviderClient implements ProviderClient {
         return new RetrievedObject(
                 provider,
                 bucket,
-                request.key(),
+                request.filePath(),
+                null,
                 new ByteArrayInputStream(new byte[]{1}),
                 "application/octet-stream",
                 Map.of(),
@@ -52,3 +53,4 @@ class StubProviderClient implements ProviderClient {
         return List.of(new StorageObjectInfo("dummy-key", 1L, null));
     }
 }
+

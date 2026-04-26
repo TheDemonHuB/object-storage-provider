@@ -20,8 +20,8 @@ class StoredObjectTest {
     void shouldPopulateOriginalAndStoredMetadataForConvenienceConstructor() {
         StoredObject object = new StoredObject(StorageProvider.S3, "bucket", "docs/file.txt", "etag", "v1");
 
-        assertEquals("docs/file.txt", object.originalKey());
-        assertEquals("docs/file.txt", object.key());
+        assertEquals("docs/file.txt", object.originalFilePath());
+        assertEquals("docs/file.txt", object.filePath());
         assertEquals("file.txt", object.originalFilename());
         assertEquals("file.txt", object.storedFilename());
     }
@@ -31,3 +31,4 @@ class StoredObjectTest {
         assertThrows(NullPointerException.class, () -> new StoredObject(null, "bucket", "key", null, null));
     }
 }
+

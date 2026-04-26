@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 import com.example.objectstorage.api.request.DeleteFileRequest;
 import com.example.objectstorage.api.request.GetFileRequest;
+import com.example.objectstorage.api.request.GetVersionsRequest;
 import com.example.objectstorage.api.request.ListFilesRequest;
 import com.example.objectstorage.api.request.MoveFileRequest;
 import com.example.objectstorage.api.request.UploadFileRequest;
@@ -51,6 +52,11 @@ class ObjectStorageServiceTest {
 
         @Override
         public List<StorageObjectInfo> listFiles(ListFilesRequest request) {
+            return List.of();
+        }
+
+        @Override
+        public List<StorageObjectInfo> getVersions(GetVersionsRequest request) {
             return List.of();
         }
     }

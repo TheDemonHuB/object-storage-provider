@@ -3,13 +3,10 @@ package com.example.objectstorage.api.request;
 import com.example.objectstorage.api.StorageProvider;
 import com.example.objectstorage.core.ValidationUtils;
 
-public record DeleteFileRequest(String key, StorageProvider provider, String bucket) {
+public record DeleteFileRequest(String filePath, String versionId, StorageProvider provider, String bucket) {
     public DeleteFileRequest {
-        key = ValidationUtils.requireNonBlank(key, "key");
+        filePath = ValidationUtils.requireNonBlank(filePath, "filePath");
+        versionId = ValidationUtils.normalizeToNull(versionId);
         bucket = ValidationUtils.normalizeToNull(bucket);
-    }
-
-    public DeleteFileRequest(String key) {
-        this(key, null, null);
     }
 }
