@@ -12,22 +12,45 @@ import com.example.objectstorage.api.response.StorageObjectInfo;
 import com.example.objectstorage.api.response.StoredObject;
 import java.util.List;
 
+/**
+ * Public provider-agnostic object storage contract.
+ *
+ * &lt;p&gt;All methods are list-first so callers can use one or many items with a single API shape.
+ */
 public interface ObjectStorageService extends AutoCloseable {
+    /**
+     * Saves files to object storage and returns stored metadata in the same order as the input.
+     */
     List&lt;StoredObject&gt; saveFiles(List&lt;UploadFileRequest&gt; requests);
 
+    /**
+     * Retrieves files from object storage in the same order as the input.
+     */
     List&lt;RetrievedObject&gt; getFiles(List&lt;GetFileRequest&gt; requests);
 
+    /**
+     * Deletes files from object storage in the same order as the input.
+     */
     List&lt;DeletedObject&gt; deleteFiles(List&lt;DeleteFileRequest&gt; requests);
 
+    /**
+     * Copies files between source and destination targets.
+     */
     List&lt;StoredObject&gt; copyFiles(List&lt;CopyFileRequest&gt; requests);
 
+    /**
+     * Moves files by copying to destination and deleting the source object.
+     */
     List&lt;StoredObject&gt; moveFiles(List&lt;MoveFileRequest&gt; requests);
 
+    /**
+     * Lists files for a prefix and optional result cap.
+     */
     List&lt;StorageObjectInfo&gt; listFiles(ListFilesRequest request);
 
     @Override
     default void close() {
         // no-op by default
-<span class="fc" id="L31">    }</span>
+<span class="fc" id="L54">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

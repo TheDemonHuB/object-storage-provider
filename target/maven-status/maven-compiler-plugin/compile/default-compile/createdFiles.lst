@@ -13,10 +13,8 @@ com\example\objectstorage\api\response\StoredObject.class
 com\example\objectstorage\api\response\StorageObjectInfo.class
 com\example\objectstorage\api\request\ListFilesRequest.class
 com\example\objectstorage\provider\azure\AzureBlobProviderClient.class
-com\example\objectstorage\provider\utho\UthoProviderClient.class
 com\example\objectstorage\core\DefaultObjectStorageService$ResolvedSaveRequest.class
 com\example\objectstorage\provider\s3\S3ProviderClient.class
-com\example\objectstorage\config\UthoStorageConfig.class
 com\example\objectstorage\api\ObjectStorageService.class
 com\example\objectstorage\api\request\MoveFileRequest.class
 com\example\objectstorage\core\ProviderClient.class

@@ -24,14 +24,4 @@ class StorageConfigRecordsTest {
         assertEquals("{\"type\":\"service_account\"}", config.credentialsJson());
     }
 
-    @Test
-    void shouldNormalizeUthoEndpointAndDefaultRegion() {
-        UthoStorageConfig config = new UthoStorageConfig("innoida.utho.io", "ak", "sk", " ");
-
-        assertEquals("https://innoida.utho.io", config.endpoint());
-        assertEquals("ak", config.accessKey());
-        assertEquals("sk", config.secretKey());
-        assertEquals("us-east-1", config.region());
-        assertThrows(IllegalArgumentException.class, () -> new UthoStorageConfig(" ", "ak", "sk", "us-east-1"));
-    }
 }

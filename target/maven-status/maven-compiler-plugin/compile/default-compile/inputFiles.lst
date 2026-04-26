@@ -14,7 +14,6 @@ D:\dev\object storage\object-storage-library\src\main\java\com\example\objectsto
 D:\dev\object storage\object-storage-library\src\main\java\com\example\objectstorage\config\GcpStorageConfig.java
 D:\dev\object storage\object-storage-library\src\main\java\com\example\objectstorage\config\ObjectStorageServiceBuilder.java
 D:\dev\object storage\object-storage-library\src\main\java\com\example\objectstorage\config\S3StorageConfig.java
-D:\dev\object storage\object-storage-library\src\main\java\com\example\objectstorage\config\UthoStorageConfig.java
 D:\dev\object storage\object-storage-library\src\main\java\com\example\objectstorage\core\DefaultObjectStorageService.java
 D:\dev\object storage\object-storage-library\src\main\java\com\example\objectstorage\core\ObjectStorageException.java
 D:\dev\object storage\object-storage-library\src\main\java\com\example\objectstorage\core\ProviderClient.java
@@ -23,4 +22,3 @@ D:\dev\object storage\object-storage-library\src\main\java\com\example\objectsto
 D:\dev\object storage\object-storage-library\src\main\java\com\example\objectstorage\provider\azure\AzureBlobProviderClient.java
 D:\dev\object storage\object-storage-library\src\main\java\com\example\objectstorage\provider\gcp\GcpProviderClient.java
 D:\dev\object storage\object-storage-library\src\main\java\com\example\objectstorage\provider\s3\S3ProviderClient.java
-D:\dev\object storage\object-storage-library\src\main\java\com\example\objectstorage\provider\utho\UthoProviderClient.java

@@ -9,7 +9,6 @@ com\example\objectstorage\api\ObjectStorageServiceTest.class
 com\example\objectstorage\core\ProviderClientTest$1.class
 com\example\objectstorage\api\request\RequestRecordsTest.class
 com\example\objectstorage\core\DefaultObjectStorageServiceTest$TrackingStubProviderClient.class
-com\example\objectstorage\provider\utho\UthoProviderClientTest.class
 com\example\objectstorage\core\ProviderClientTest.class
 com\example\objectstorage\api\response\RetrievedObjectTest.class
 com\example\objectstorage\core\DefaultObjectStorageServiceTest$TrackingCopyMoveProviderClient.class

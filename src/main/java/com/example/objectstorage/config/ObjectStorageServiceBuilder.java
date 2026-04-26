@@ -7,7 +7,6 @@ import com.example.objectstorage.core.ProviderClient;
 import com.example.objectstorage.provider.azure.AzureBlobProviderClient;
 import com.example.objectstorage.provider.gcp.GcpProviderClient;
 import com.example.objectstorage.provider.s3.S3ProviderClient;
-import com.example.objectstorage.provider.utho.UthoProviderClient;
 import java.time.Clock;
 import java.time.ZoneId;
 import java.util.Collections;
@@ -29,7 +28,6 @@ public final class ObjectStorageServiceBuilder {
     private S3StorageConfig s3StorageConfig;
     private AzureBlobStorageConfig azureBlobStorageConfig;
     private GcpStorageConfig gcpStorageConfig;
-    private UthoStorageConfig uthoStorageConfig;
     private int maxConcurrentSaves;
     private int batchSize = DEFAULT_BATCH_SIZE;
     private int maxConcurrentBatchItems = DEFAULT_MAX_CONCURRENT_BATCH_ITEMS;
@@ -61,11 +59,6 @@ public final class ObjectStorageServiceBuilder {
 
     public ObjectStorageServiceBuilder withGcp(GcpStorageConfig config) {
         this.gcpStorageConfig = Objects.requireNonNull(config, "gcp config must not be null");
-        return this;
-    }
-
-    public ObjectStorageServiceBuilder withUtho(UthoStorageConfig config) {
-        this.uthoStorageConfig = Objects.requireNonNull(config, "utho config must not be null");
         return this;
     }
 
@@ -181,10 +174,6 @@ public final class ObjectStorageServiceBuilder {
         if (gcpStorageConfig != null) {
             providers.put(StorageProvider.GCP, new GcpProviderClient(gcpStorageConfig));
         }
-        if (uthoStorageConfig != null) {
-            providers.put(StorageProvider.UTHO, new UthoProviderClient(uthoStorageConfig));
-        }
-
         if (provider == null) {
             throw new IllegalStateException("provider must be configured via withProvider(...)");
         }

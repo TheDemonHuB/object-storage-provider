@@ -5,7 +5,7 @@ Provider-agnostic Java library for storing and retrieving objects from:
 - Amazon S3
 - Azure Blob Storage
 - Google Cloud Storage
-- Utho Object Storage through an S3-compatible MinIO client
+- S3-compatible object storage through S3 custom endpoint configuration
 
 The library exposes one API (`ObjectStorageService`) and hides provider-specific SDK calls behind provider clients.
 
@@ -35,7 +35,7 @@ Use it from another Maven application:
 <dependency>
     <groupId>com.example.objectstorage</groupId>
     <artifactId>object-storage-library</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
@@ -62,7 +62,6 @@ import com.example.objectstorage.config.AzureBlobStorageConfig;
 import com.example.objectstorage.config.GcpStorageConfig;
 import com.example.objectstorage.config.ObjectStorageServiceBuilder;
 import com.example.objectstorage.config.S3StorageConfig;
-import com.example.objectstorage.config.UthoStorageConfig;
 import com.example.objectstorage.core.ObjectStorageException;
 ```
 
@@ -187,19 +186,19 @@ If both credential sources are provided, the current implementation uses `creden
 
 When both values are `null`, the Google client falls back to the default Google Cloud credentials chain.
 
-### Utho Object Storage
+### S3-Compatible Storage (Including Utho)
+
+Configure S3 with a provider endpoint override and path-style access when needed:
 
 ```java
-UthoStorageConfig utho = new UthoStorageConfig(
-        "innoida.utho.io",
+S3StorageConfig s3 = new S3StorageConfig(
+        "us-east-1",
         accessKey,
         secretKey,
-        "us-east-1"
+        "https://innoida.utho.io",
+        true
 );
 ```
-
-If the endpoint does not start with `http://` or `https://`, the library adds `https://`.
-If `region` is `null`, the library uses `us-east-1`.
 
 ## Build With Multiple Providers
 
@@ -208,7 +207,6 @@ ObjectStorageService service = ObjectStorageServiceBuilder.builder()
         .withS3(s3Config)
         .withAzure(azureConfig)
         .withGcp(gcpConfig)
-        .withUtho(uthoConfig)
         .withProvider(StorageProvider.S3)
         .withBucket("my-bucket")
         .build();
@@ -428,10 +426,6 @@ S3_PATH_STYLE_ACCESS=false
 AZURE_STORAGE_CONNECTION_STRING=...
 GCP_PROJECT_ID=...
 GCP_CREDENTIALS_PATH=D:/secrets/gcp-service-account.json
-UTHO_ENDPOINT=innoida.utho.io
-UTHO_ACCESS_KEY=...
-UTHO_SECRET_KEY=...
-UTHO_REGION=us-east-1
 STORAGE_BATCH_SIZE=100
 STORAGE_MAX_CONCURRENT_BATCH_ITEMS=4
 STORAGE_MAX_BATCH_ITEMS=500

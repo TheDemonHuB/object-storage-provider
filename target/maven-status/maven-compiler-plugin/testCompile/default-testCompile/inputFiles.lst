@@ -12,4 +12,3 @@ D:\dev\object storage\object-storage-library\src\test\java\com\example\objectsto
 D:\dev\object storage\object-storage-library\src\test\java\com\example\objectstorage\provider\azure\AzureBlobProviderClientTest.java
 D:\dev\object storage\object-storage-library\src\test\java\com\example\objectstorage\provider\gcp\GcpProviderClientTest.java
 D:\dev\object storage\object-storage-library\src\test\java\com\example\objectstorage\provider\s3\S3ProviderClientTest.java
-D:\dev\object storage\object-storage-library\src\test\java\com\example\objectstorage\provider\utho\UthoProviderClientTest.java

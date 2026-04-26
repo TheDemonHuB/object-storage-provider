@@ -36,6 +36,10 @@ import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Default orchestration layer that routes calls to provider clients and applies
+ * batching, concurrency limits, request validation, and transactional rollback for save operations.
+ */
 public final class DefaultObjectStorageService implements ObjectStorageService {
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultObjectStorageService.class);
     private static final String BATCH_PREFIX = "Batch ";
