@@ -3,6 +3,7 @@
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.thedemonhub/object-storage-library?label=Maven%20Central)](https://central.sonatype.com/artifact/io.github.thedemonhub/object-storage-library)
 [![Java 21](https://img.shields.io/badge/Java-21-007396)](https://adoptium.net/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+![GitHub stars](https://img.shields.io/github/stars/thedemonhub/object-storage-library?style=social)
 
 ## Why This Exists
 
