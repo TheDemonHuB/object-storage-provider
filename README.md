@@ -3,8 +3,7 @@
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.thedemonhub/object-storage-library?label=Maven%20Central)](https://central.sonatype.com/artifact/io.github.thedemonhub/object-storage-library)
 [![Java 21](https://img.shields.io/badge/Java-21-007396)](https://adoptium.net/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-![GitHub stars](https://img.shields.io/github/stars/thedemonhub/object-storage-library?style=social)
-
+![GitHub stars](https://img.shields.io/github/stars/TheDemonHuB/object-storage-provider?style=social)
 ## Why This Exists
 
 Most teams do not want storage provider logic spread across business code. This library exists to give you one clean Java API for upload/download/delete/list/version operations across S3, Azure Blob, and GCP Storage so you can switch providers, run multi-cloud, or migrate with minimal code change.
