@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.0] - 2026-04-27
+
+### Changed
+- Release line aligned to `1.0.0` for Maven Central publication baseline.
+- Maven coordinates and consumer version references updated to `1.0.0`.
+
+### Documentation
+- Reworked README for faster onboarding:
+  - added strong "Why this exists" section at the top.
+  - added a 10-second quick start.
+  - added "Why not just use SDKs?" section.
+  - added comparison table and supported providers section.
+  - added real-world use cases.
+  - moved Service API section lower in the document.
+  - added badges and removed test-command section.
+
 ## [2.2.2] - 2026-04-27
 
 ### Fixed

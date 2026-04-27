@@ -4,15 +4,92 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <parent>
-        <groupId>com.example.objectstorage</groupId>
-        <artifactId>object-storage-parent</artifactId>
-        <version>2.2.2</version>
-    </parent>
-
+    <groupId>io.github.thedemonhub</groupId>
     <artifactId>object-storage-library</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
     <name>Object Storage Library</name>
     <description>Provider-agnostic object storage abstraction for S3, Azure, and GCP</description>
+    <url>https://github.com/TheDemonHuB/object-storage</url>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>TheDemonHuB</id>
+            <name>TheDemonHuB</name>
+            <email>thedemonhub@users.noreply.github.com</email>
+            <url>https://github.com/TheDemonHuB</url>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git://github.com/TheDemonHuB/object-storage.git</connection>
+        <developerConnection>scm:git:ssh://github.com/TheDemonHuB/object-storage.git</developerConnection>
+        <url>https://github.com/TheDemonHuB/object-storage</url>
+    </scm>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.release>${java.version}</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <aws.sdk.version>2.25.53</aws.sdk.version>
+        <spring.boot.version>3.3.5</spring.boot.version>
+        <azure.storage.blob.version>12.26.1</azure.storage.blob.version>
+        <google.cloud.storage.version>2.39.0</google.cloud.storage.version>
+        <junit.jupiter.version>5.10.3</junit.jupiter.version>
+        <jacoco.version>0.8.12</jacoco.version>
+        <exec.maven.plugin.version>3.5.0</exec.maven.plugin.version>
+        <sonar.maven.plugin.version>5.5.0.6356</sonar.maven.plugin.version>
+        <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
+        <maven.surefire.plugin.version>3.2.5</maven.surefire.plugin.version>
+        <maven.gpg.plugin.version>3.1.0</maven.gpg.plugin.version>
+        <central.publishing.maven.plugin.version>0.6.0</central.publishing.maven.plugin.version>
+        <maven.source.plugin.version>3.3.0</maven.source.plugin.version>
+        <maven.javadoc.plugin.version>3.6.3</maven.javadoc.plugin.version>
+
+        <sonar.host.url>http://localhost:9001</sonar.host.url>
+        <sonar.projectKey>object-storage-library</sonar.projectKey>
+        <sonar.projectName>object-storage-library</sonar.projectName>
+        <sonar.scm.disabled>true</sonar.scm.disabled>
+        <sonar.userHome>${project.basedir}/../.sonar</sonar.userHome>
+        <sonar.skip>false</sonar.skip>
+        <sonar.wait.timeout.seconds>300</sonar.wait.timeout.seconds>
+        <sonar.admin.user>admin</sonar.admin.user>
+        <sonar.admin.password>admin</sonar.admin.password>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${aws.sdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.junit</groupId>
+                <artifactId>junit-bom</artifactId>
+                <version>${junit.jupiter.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring.boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -55,11 +132,158 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven.compiler.plugin.version}</version>
+                <configuration>
+                    <release>${maven.compiler.release}</release>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven.surefire.plugin.version}</version>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>${exec.maven.plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>start-sonarqube-with-docker-compose</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${sonar.skip}</skip>
+                            <executable>powershell</executable>
+                            <arguments>
+                                <argument>-NoProfile</argument>
+                                <argument>-ExecutionPolicy</argument>
+                                <argument>Bypass</argument>
+                                <argument>-File</argument>
+                                <argument>${project.basedir}/../scripts/start-sonar-compose.ps1</argument>
+                                <argument>-TimeoutSeconds</argument>
+                                <argument>${sonar.wait.timeout.seconds}</argument>
+                                <argument>-SonarUrl</argument>
+                                <argument>${sonar.host.url}</argument>
+                                <argument>-AdminUser</argument>
+                                <argument>${sonar.admin.user}</argument>
+                                <argument>-AdminPassword</argument>
+                                <argument>${sonar.admin.password}</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.sonarsource.scanner.maven</groupId>
+                <artifactId>sonar-maven-plugin</artifactId>
+                <version>${sonar.maven.plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>run-sonar-on-verify</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>sonar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <skip>${sonar.skip}</skip>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <version>3.1.4</version>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <version>${central.publishing.maven.plugin.version}</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <publishingServerId>central</publishingServerId>
+                    <autoPublish>true</autoPublish>
+                    <waitUntil>published</waitUntil>
+                </configuration>
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>release-central</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>${maven.source.plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>${maven.javadoc.plugin.version}</version>
+                        <configuration>
+                            <doclint>none</doclint>
+                            <failOnError>false</failOnError>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>${maven.gpg.plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
