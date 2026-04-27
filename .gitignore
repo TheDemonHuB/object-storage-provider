@@ -1,1 +1,20 @@
+# Maven/Java build output
 /target/
+
+# IDE metadata
+.classpath
+.project
+.settings/
+.idea/
+*.iml
+.vscode/
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Logs/temp
+*.log
+*.tmp
